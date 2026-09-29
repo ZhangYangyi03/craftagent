@@ -1,0 +1,395 @@
+{
+  "spec": 8.5,
+  "spec_unit": "um",
+  "quality_channel": "roundness_um",
+  "machine_log": "data/machine_log.csv",
+  "cmm_report": "data/cmm_report.csv",
+  "machines": {
+    "M01": {
+      "machine_id": "M01",
+      "n_machine": 7200,
+      "n_cmm": 720,
+      "aligned": 720,
+      "dropped": 0,
+      "out_of_spec": {
+        "count": 183,
+        "total": 720,
+        "ratio": 0.2542,
+        "first_ts": "2026-09-05 01:33:00",
+        "cluster_ts": "2026-09-05 02:00-03:00（6 件）",
+        "spec": 8.5,
+        "unit": "um"
+      },
+      "change_points": {
+        "ambient_rh": [],
+        "coolant_temp_c": [],
+        "spindle_current_a": [
+          {
+            "index": 5182,
+            "ts": "2026-09-04 22:22:00",
+            "score": 13.21
+          },
+          {
+            "index": 5422,
+            "ts": "2026-09-05 02:22:00",
+            "score": 39.85
+          },
+          {
+            "index": 5878,
+            "ts": "2026-09-05 09:58:00",
+            "score": 75.62
+          }
+        ],
+        "temp_c": [
+          {
+            "index": 5185,
+            "ts": "2026-09-04 22:25:00",
+            "score": 3.73
+          },
+          {
+            "index": 5425,
+            "ts": "2026-09-05 02:25:00",
+            "score": 14.08
+          },
+          {
+            "index": 5877,
+            "ts": "2026-09-05 09:57:00",
+            "score": 27.82
+          }
+        ],
+        "vibration_mm_s": [
+          {
+            "index": 5179,
+            "ts": "2026-09-04 22:19:00",
+            "score": 10.03
+          },
+          {
+            "index": 5419,
+            "ts": "2026-09-05 02:19:00",
+            "score": 32.57
+          },
+          {
+            "index": 5866,
+            "ts": "2026-09-05 09:46:00",
+            "score": 61.95
+          }
+        ],
+        "roundness_um": [
+          {
+            "index": 5208,
+            "ts": "2026-09-04 22:48:00",
+            "score": 14.23
+          },
+          {
+            "index": 5448,
+            "ts": "2026-09-05 02:48:00",
+            "score": 48.11
+          },
+          {
+            "index": 5906,
+            "ts": "2026-09-05 10:26:00",
+            "score": 95.81
+          }
+        ]
+      },
+      "attribution": {
+        "anchor_index": 5208,
+        "candidates": [
+          {
+            "channel": "vibration_mm_s",
+            "lead_lag_min": 60,
+            "corr": 0.775,
+            "effect_after_anchor": 4.79,
+            "score": 1.1625,
+            "below_threshold": false,
+            "is_readout": false,
+            "rank": 1,
+            "unit": "mm/s"
+          },
+          {
+            "channel": "spindle_current_a",
+            "lead_lag_min": 30,
+            "corr": 0.81,
+            "effect_after_anchor": 6.02,
+            "score": 1.0125,
+            "below_threshold": false,
+            "is_readout": false,
+            "rank": 2,
+            "unit": "A"
+          },
+          {
+            "channel": "temp_c",
+            "lead_lag_min": 0,
+            "corr": 0.667,
+            "effect_after_anchor": 1.62,
+            "score": 0.667,
+            "below_threshold": false,
+            "is_readout": true,
+            "rank": 3,
+            "unit": "C"
+          },
+          {
+            "channel": "coolant_temp_c",
+            "lead_lag_min": 120,
+            "corr": -0.093,
+            "effect_after_anchor": 0.0,
+            "score": 0.0,
+            "below_threshold": true,
+            "is_readout": true,
+            "rank": 4,
+            "unit": "C"
+          },
+          {
+            "channel": "ambient_rh",
+            "lead_lag_min": 90,
+            "corr": 0.069,
+            "effect_after_anchor": 0.0,
+            "score": 0.0,
+            "below_threshold": true,
+            "is_readout": true,
+            "rank": 5,
+            "unit": "%"
+          }
+        ],
+        "r_min": 0.15,
+        "block_min": 30,
+        "method": "块中位数(30 分钟) -> 一阶差分 -> 互相关。正滞后=该信号领先质量。"
+      },
+      "trend": {
+        "anchor_ts": "2026-09-04 22:48:00",
+        "slope_per_hour": 0.904,
+        "last_median": 35.138,
+        "resid_std": 0.168,
+        "hours_to_spec": -29.47,
+        "already_over": true,
+        "anchor_band_min": 11.1
+      },
+      "adjust": {
+        "channel": "vibration_mm_s",
+        "unit": "mm/s",
+        "role": "symptom",
+        "start_index": 5208,
+        "direction": "降低",
+        "delta": 2.511,
+        "current": 5.059,
+        "target": 2.548,
+        "capped": false,
+        "slope_per_unit": 5.00416,
+        "basis": "变点后 1992 个采样点线性回归：vibration_mm_s 每变 1 mm/s，圆度变 5.0042 um；当前圆度中位数 21.06 um，规格 8.50 um。注意 vibration_mm_s 是量出来的症状，不是可调的旋钮：这个数不是让你去调它，而是说症状要降到这个水平，质量才会回来——对应的是修整/换砂轮这类动作，不是改设定值。真正的旋钮（进给、转速、修整量）本批数据里没有记录。"
+      },
+      "syndromes": [
+        {
+          "name": "砂轮钝化或堵塞",
+          "score": 0.792,
+          "evidence": {
+            "vibration_mm_s": {
+              "lead_lag_min": 60,
+              "corr": 0.775
+            },
+            "spindle_current_a": {
+              "lead_lag_min": 30,
+              "corr": 0.81
+            }
+          },
+          "action": "停机金刚石笔修整砂轮（0.02 mm/次），修整后首件复测圆度，再决定要不要动进给",
+          "master_note": "老师傅经验：电流和振动一起抬、温度过一会儿才跟涨，十有八九是砂轮钝了。先修砂轮，别先动进给——动了进给就分不清是谁的功劳。"
+        }
+      ],
+      "spec": 8.5,
+      "knob_channels_present": [],
+      "sampling": {
+        "cmm_every_min": 10.0
+      }
+    },
+    "M02": {
+      "machine_id": "M02",
+      "n_machine": 7200,
+      "n_cmm": 720,
+      "aligned": 720,
+      "dropped": 0,
+      "out_of_spec": {
+        "count": 0,
+        "total": 720,
+        "ratio": 0.0,
+        "first_ts": null,
+        "cluster_ts": null,
+        "spec": 8.5,
+        "unit": "um"
+      },
+      "change_points": {
+        "ambient_rh": [],
+        "coolant_temp_c": [],
+        "spindle_current_a": [],
+        "temp_c": [],
+        "vibration_mm_s": [],
+        "roundness_um": []
+      },
+      "attribution": {
+        "anchor_index": null,
+        "candidates": [
+          {
+            "channel": "temp_c",
+            "lead_lag_min": 180,
+            "corr": -0.178,
+            "effect_after_anchor": null,
+            "score": 0.445,
+            "below_threshold": false,
+            "is_readout": true,
+            "rank": 1,
+            "unit": "C"
+          },
+          {
+            "channel": "vibration_mm_s",
+            "lead_lag_min": 30,
+            "corr": -0.193,
+            "effect_after_anchor": null,
+            "score": 0.2413,
+            "below_threshold": false,
+            "is_readout": false,
+            "rank": 2,
+            "unit": "mm/s"
+          },
+          {
+            "channel": "ambient_rh",
+            "lead_lag_min": -120,
+            "corr": -0.175,
+            "effect_after_anchor": null,
+            "score": 0.175,
+            "below_threshold": false,
+            "is_readout": true,
+            "rank": 3,
+            "unit": "%"
+          },
+          {
+            "channel": "spindle_current_a",
+            "lead_lag_min": -150,
+            "corr": -0.152,
+            "effect_after_anchor": null,
+            "score": 0.152,
+            "below_threshold": false,
+            "is_readout": false,
+            "rank": 4,
+            "unit": "A"
+          },
+          {
+            "channel": "coolant_temp_c",
+            "lead_lag_min": 180,
+            "corr": 0.123,
+            "effect_after_anchor": null,
+            "score": 0.0,
+            "below_threshold": true,
+            "is_readout": true,
+            "rank": 5,
+            "unit": "C"
+          }
+        ],
+        "r_min": 0.15,
+        "block_min": 30,
+        "method": "块中位数(30 分钟) -> 一阶差分 -> 互相关。正滞后=该信号领先质量。"
+      },
+      "trend": {},
+      "adjust": null,
+      "syndromes": [],
+      "spec": 8.5,
+      "knob_channels_present": [],
+      "sampling": {
+        "cmm_every_min": 10.0
+      }
+    }
+  },
+  "verdict": {
+    "drifting": [
+      "M01"
+    ],
+    "stable": [
+      "M02"
+    ]
+  },
+  "profile": {
+    "process": "外圆磨削（滚道）",
+    "quality": {
+      "channel": "roundness_um",
+      "spec": 8.5,
+      "unit": "um",
+      "direction": "max"
+    },
+    "signals": {
+      "spindle_current_a": {
+        "role": "symptom",
+        "label": "主轴电流",
+        "unit": "A"
+      },
+      "vibration_mm_s": {
+        "role": "symptom",
+        "label": "振动",
+        "unit": "mm/s"
+      },
+      "temp_c": {
+        "role": "readout",
+        "label": "主轴温度",
+        "unit": "C"
+      },
+      "coolant_temp_c": {
+        "role": "readout",
+        "label": "冷却液温度",
+        "unit": "C"
+      },
+      "ambient_rh": {
+        "role": "readout",
+        "label": "环境湿度",
+        "unit": "%"
+      }
+    },
+    "knobs": [
+      "wheel_dress_depth_mm",
+      "feed_rate_mm_min",
+      "spindle_speed_rpm",
+      "coolant_flow_l_min"
+    ],
+    "syndromes": [
+      {
+        "name": "砂轮钝化或堵塞",
+        "symptoms": [
+          "spindle_current_a",
+          "vibration_mm_s"
+        ],
+        "min_corr": 0.5,
+        "lead_min_range": [
+          0,
+          90
+        ],
+        "quality_delay_min": 10,
+        "action": "停机金刚石笔修整砂轮（0.02 mm/次），修整后首件复测圆度，再决定要不要动进给",
+        "master_note": "老师傅经验：电流和振动一起抬、温度过一会儿才跟涨，十有八九是砂轮钝了。先修砂轮，别先动进给——动了进给就分不清是谁的功劳。"
+      },
+      {
+        "name": "冷却不足 / 热变形",
+        "symptoms": [
+          "temp_c",
+          "coolant_temp_c"
+        ],
+        "min_corr": 0.4,
+        "lead_min_range": [
+          0,
+          180
+        ],
+        "quality_delay_min": 5,
+        "action": "查冷却液流量与过滤，确认喷嘴没堵；连续加工前保证空转预热到位",
+        "master_note": "老师傅经验：一早开机头两小时不能算，机床还没热透。要看趋势得看上午十点以后的。"
+      }
+    ]
+  },
+  "knobs": [
+    "wheel_dress_depth_mm",
+    "feed_rate_mm_min",
+    "spindle_speed_rpm",
+    "coolant_flow_l_min"
+  ],
+  "readouts": [
+    "temp_c",
+    "coolant_temp_c",
+    "ambient_rh"
+  ],
+  "method": "去班次日周期 -> 中位数/MAD 标准化 -> CUSUM 二分变点 -> 两段均值精修 -> 差分互相关定领先滞后 -> 线性回归换算调整量。相关性排序，不是因果证明。",
+  "ground_truth": null
+}

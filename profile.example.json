@@ -1,0 +1,21 @@
+{
+  "process": "外圆磨削（滚道）",
+  "quality": {"channel": "roundness_um", "spec": 8.5, "unit": "um"},
+  "signals": {
+    "spindle_current_a": {"role": "symptom", "label": "主轴电流", "unit": "A"},
+    "vibration_mm_s":    {"role": "symptom", "label": "振动",     "unit": "mm/s"},
+    "temp_c":            {"role": "readout", "label": "主轴温度", "unit": "C"},
+    "coolant_temp_c":    {"role": "readout", "label": "冷却液温度", "unit": "C"},
+    "ambient_rh":        {"role": "readout", "label": "环境湿度", "unit": "%"},
+    "feed_rate_mm_min":  {"role": "knob",    "label": "进给速度", "unit": "mm/min"},
+    "wheel_dress_depth_mm": {"role": "knob", "label": "修整量",   "unit": "mm"}
+  },
+  "knobs": ["wheel_dress_depth_mm", "feed_rate_mm_min", "spindle_speed_rpm", "coolant_flow_l_min"],
+  "syndromes": [
+    {"name": "砂轮钝化或堵塞",
+     "symptoms": ["spindle_current_a", "vibration_mm_s"],
+     "min_corr": 0.5, "lead_min_range": [0, 90], "quality_delay_min": 10,
+     "action": "停机金刚石笔修整砂轮（0.02 mm/次），修整后首件复测圆度，再决定要不要动进给",
+     "master_note": "老师傅经验：电流和振动一起抬、温度过一会儿才跟涨，十有八九是砂轮钝了。先修砂轮，别先动进给——动了进给就分不清是谁的功劳。"}
+  ]
+}
