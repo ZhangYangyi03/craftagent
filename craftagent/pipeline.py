@@ -13,8 +13,36 @@ def busiest_hour(items, key="ts"):
     (d, h), n = max(b.items(), key=lambda kv: kv[1])
     return "%s %02d:00-%02d:00（%d 件）" % (d, h, h + 1, n)
 
+def apply_boundary_mask(rows, cmm, invalid_when=None, cycle_min=480, warmup_skip_min=0):
+    """把老师的"什么时候不算"变成分析时的掩码。
+
+    老师说"刚开机的头两小时不算"，那就把每个班次开头的 120 分钟整段丢掉再算一遍——
+    不是嘴上提一句。丢完再看结论有没有变，才知道这条边界是不是真的成立。
+    返回 (rows, cmm, 被丢掉的行数)。
+    """
+    if warmup_skip_min and warmup_skip_min > 0 and cycle_min > 0:
+        N = len(rows)
+        keep = [i for i in range(N) if (i % cycle_min) >= warmup_skip_min]
+        dropped = N - len(keep)
+        tsset = {rows[i]["ts"] for i in keep}
+        rows = [rows[i] for i in keep]
+        cmm = [c for c in cmm if c["ts"] in tsset]
+        return rows, cmm, dropped
+    return rows, cmm, 0
+
 def analyse_machine(rows, cmm, spec, min_size=240, window=180, knobs=None,
-                    quality_name="roundness_um", block=30, prof=None):
+                    quality_name="roundness_um", block=30, prof=None,
+                    warmup_skip_min=0, cycle_min=480):
+    rows, cmm, mask_dropped = apply_boundary_mask(rows, cmm, cycle_min=cycle_min,
+                                                  warmup_skip_min=warmup_skip_min)
+    if not rows or not cmm:
+        return {"machine_id": None, "n_machine": 0, "n_cmm": 0, "aligned": 0, "dropped": 0,
+                "mask_dropped": mask_dropped,
+                "out_of_spec": {"count": 0, "total": 0, "ratio": 0.0, "spec": spec, "unit": "um"},
+                "change_points": {}, "attribution": {"candidates": [], "anchor_index": None,
+                "r_min": 0.15, "block_min": block, "method": "掩码后没有剩余样本"},
+                "trend": {}, "adjust": None, "syndromes": [], "spec": spec,
+                "knob_channels_present": [], "sampling": {}}
     ts = [r["ts"] for r in rows]
     sig_names = sorted(rows[0]["sig"].keys())
     channels = {k: [r["sig"].get(k) for r in rows] for k in sig_names}
@@ -39,7 +67,7 @@ def analyse_machine(rows, cmm, spec, min_size=240, window=180, knobs=None,
     cp_report = {k: out(v) for k, v in cps.items()}
     cp_report[quality_name] = out(q_cps)
 
-    attr = attribute(resid, resid_q, q_cps, window=window, block=block)
+    attr = attribute(resid, resid_q, q_cps, window=window, block=block, knobs=knobs)
     for c in attr["candidates"]:
         c["unit"] = unit_of(c["channel"])
 
@@ -71,6 +99,7 @@ def analyse_machine(rows, cmm, spec, min_size=240, window=180, knobs=None,
     syn = profile_mod.match_syndrome(prof, attr["candidates"], q_cps) if q_cps else []
 
     return {"machine_id": rows[0]["id"], "n_machine": len(rows), "n_cmm": len(cmm),
+            "mask_dropped": mask_dropped, "warmup_skip_min": warmup_skip_min,
             "aligned": len(aligned), "dropped": dropped, "out_of_spec": oos,
             "change_points": cp_report, "attribution": attr, "trend": trend,
             "adjust": adjust, "syndromes": syn, "spec": spec,
@@ -79,7 +108,7 @@ def analyse_machine(rows, cmm, spec, min_size=240, window=180, knobs=None,
             "sampling": {"cmm_every_min": (round(len(ts) / len(aligned), 1) if aligned else None)}}
 
 def run(machine_path, cmm_path, quality=None, spec=8.5, min_size=240,
-        knobs=None, block=30, profile=None):
+        knobs=None, block=30, profile=None, warmup_skip_min=0, cycle_min=480):
     prof = profile_mod.load(profile)
     machine = load_machine_log(machine_path)
     cmm, qname = load_cmm(cmm_path, quality=quality)
@@ -93,13 +122,15 @@ def run(machine_path, cmm_path, quality=None, spec=8.5, min_size=240,
         if not rows: continue
         ms = min_size if len(rows) > 4 * min_size else max(60, len(rows) // 8)
         rep = analyse_machine(rows, cs, spec, min_size=ms, window=180, knobs=knobs,
-                              quality_name=qname, block=block, prof=prof)
+                              quality_name=qname, block=block, prof=prof,
+                              warmup_skip_min=warmup_skip_min, cycle_min=cycle_min)
         per[mid] = rep
         if rep["out_of_spec"]["count"] > 0 or (rep["change_points"].get(qname) or []):
             drifting.append(mid)
         else:
             stable.append(mid)
     return {"spec": spec, "spec_unit": "um", "quality_channel": qname,
+            "warmup_skip_min": warmup_skip_min, "cycle_min": cycle_min,
             "machine_log": machine_path, "cmm_report": cmm_path,
             "machines": per, "verdict": {"drifting": drifting, "stable": stable},
             "profile": prof, "knobs": list(knobs) if knobs else [c for c in

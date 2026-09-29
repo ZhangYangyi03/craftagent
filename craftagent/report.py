@@ -46,6 +46,18 @@ def render(rep, md=True):
             A("    %-12s  %+8d   %7.3f   %+8.2f" % (lab(c["channel"]), c["lead_lag_min"],
                                                    c["corr"], c["effect_after_anchor"] or 0.0))
         A("")
+        # 读数量排前面时，报告必须给出"去查哪个旋钮"这条线索，否则现场看了不知道去哪儿
+        for c in m["attribution"]["candidates"]:
+            if c["below_threshold"] or not c.get("upstream_knobs"):
+                continue
+            ks = c["upstream_knobs"]
+            A("- %s 是读数量（不是旋钮）。它动了，说明它上游的某个量动了。按可能性去查：%s。"
+              % (lab(c["channel"]), "、".join(k["knob"] for k in ks)))
+            miss = [k["knob"] for k in ks if not k["recorded"]]
+            if miss:
+                A("  其中 %s 本批没有记录，只能给线索、给不到数值 —— 到现场第一批要采的就是这些。"
+                  % "、".join(miss))
+        A("")
         syn = m.get("syndromes") or []
         if syn:
             s = syn[0]

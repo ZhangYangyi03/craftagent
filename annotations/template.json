@@ -1,0 +1,49 @@
+{
+  "id": "6bc94c18ec46",
+  "recorded_at": "2026-09-29 12:14:03",
+  "source": {
+    "master": "",
+    "工号": "",
+    "years": null,
+    "跟岗人": ""
+  },
+  "supersedes": null,
+  "situation": {
+    "machine": "M01",
+    "process": "外圆磨削（滚道）",
+    "ts_start": "",
+    "ts_end": "",
+    "batch": "",
+    "material": "",
+    "shift": "",
+    "note": "这一段设备在干什么（换批/换砂轮/开夜班/停机后重启…）"
+  },
+  "clues": {
+    "channels": [],
+    "observed": "",
+    "at_ts": ""
+  },
+  "judgement": {
+    "blamed_channel": "",
+    "syndrome": "",
+    "window_start": "",
+    "window_end": "",
+    "confidence": null,
+    "reason": ""
+  },
+  "action": {
+    "steps": [],
+    "why": ""
+  },
+  "boundary": {
+    "invalid_when": [],
+    "leads_expected_min": null,
+    "note": ""
+  },
+  "result": {
+    "quality_after": null,
+    "recovered": null,
+    "recover_min": null,
+    "note": ""
+  }
+}

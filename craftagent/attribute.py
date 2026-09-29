@@ -7,6 +7,21 @@ from .stats import median, mad, pearson, ols_slope
 
 READOUTS = ("temp_c", "coolant_temp_c", "ambient_rh")
 
+# 读数量 -> 它上游可能被谁改动了。"去查哪个旋钮"这条线索就是这张表给的。
+# 表里放的是"可能要查的",不是"一定是他"——报告必须照这个措辞写。
+UPSTREAM = {
+    "temp_c":         ["coolant_flow_l_min", "spindle_speed_rpm", "duty_cycle_pct",
+                       "wheel_dress_depth_mm", "开机预热是否到位"],
+    "coolant_temp_c": ["coolant_flow_l_min", "冷却液箱体温度/是否刚补液", "过滤是否堵"],
+    "ambient_rh":     ["车间空调/除湿", "厂房门窗与夜班交接", "压缩空气含水"],
+}
+
+def upstream_of(channel, knobs=None):
+    """给一个读数量，返回"该去查哪些上游旋钮"的候选，并标出其中哪些本批有记录。"""
+    cands = list(UPSTREAM.get(channel, []))
+    have = set(knobs or [])
+    return [{"knob": k, "recorded": k in have} for k in cands]
+
 def block_median(series, block=30):
     out = []
     for i in range(0, len(series), block):
@@ -31,7 +46,7 @@ def lead_lag(target, driver, block=30, max_lag_blocks=8, min_n=40):
         if abs(r) > abs(best[1]): best = (lag*block, round(r, 3))
     return best
 
-def attribute(channels, quality_series, quality_cps, window=180, r_min=0.15, block=30, min_n=40):
+def attribute(channels, quality_series, quality_cps, window=180, r_min=0.15, block=30, min_n=40, knobs=None):
     """打分 = |r| * (1 + 正领先分钟/120)。|r| 低于 r_min 不算候选，
     免得"滞后 240 分钟但几乎不相关"靠大滞后刷分。"""
     res = []
@@ -47,7 +62,9 @@ def attribute(channels, quality_series, quality_cps, window=180, r_min=0.15, blo
                 s = 1.4826*mad([v for v in series if v is not None]) or 1.0
                 eff = round((median(after)-median(before))/s, 2)
         below = abs(r) < r_min
+        up = upstream_of(name, knobs) if name in READOUTS else []
         res.append({"channel": name, "lead_lag_min": lag, "corr": r,
+                    "upstream_knobs": up,
                     "effect_after_anchor": eff,
                     "score": 0.0 if below else round(abs(r)*(1.0 + max(lag, 0)/120.0), 4),
                     "below_threshold": below, "is_readout": name in READOUTS})
@@ -93,8 +110,16 @@ def recommend(quality_series, driver_series, driver_name, spec, unit="", role="s
                 "而是说症状要降到这个水平，质量才会回来——对应的是修整/换砂轮这类动作，"
                 "不是改设定值。真正的旋钮（进给、转速、修整量）本批数据里没有记录。" % driver_name)
     else:
+        up = upstream_of(driver_name)
+        miss = [u["knob"] for u in up if not u["recorded"]]
         tail = ("注意 %s 是环境读数量：它变了说明它上游的某个旋钮变了，"
                 "要查的是那个旋钮，不是把 %s 调走。" % (driver_name, driver_name))
+        if up:
+            tail += ("该去查的旋钮（按可能性排）：%s。"
+                     % "、".join(u["knob"] for u in up))
+            if miss:
+                tail += ("其中 %s 本批数据里没有记录，所以只能给到线索、给不到数值——"
+                         "这是下一步要到现场采的第一批参数。" % "、".join(miss))
     base.update({"direction": "降低" if delta < 0 else "提高", "delta": round(abs(delta), 3),
                  "current": round(cur, 3), "target": round(cur + delta, 3),
                  "capped": capped, "slope_per_unit": round(b, 5),

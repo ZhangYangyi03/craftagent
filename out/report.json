@@ -2,6 +2,8 @@
   "spec": 8.5,
   "spec_unit": "um",
   "quality_channel": "roundness_um",
+  "warmup_skip_min": 0,
+  "cycle_min": 480,
   "machine_log": "data/machine_log.csv",
   "cmm_report": "data/cmm_report.csv",
   "machines": {
@@ -9,6 +11,8 @@
       "machine_id": "M01",
       "n_machine": 7200,
       "n_cmm": 720,
+      "mask_dropped": 0,
+      "warmup_skip_min": 0,
       "aligned": 720,
       "dropped": 0,
       "out_of_spec": {
@@ -99,6 +103,7 @@
             "channel": "vibration_mm_s",
             "lead_lag_min": 60,
             "corr": 0.775,
+            "upstream_knobs": [],
             "effect_after_anchor": 4.79,
             "score": 1.1625,
             "below_threshold": false,
@@ -110,6 +115,7 @@
             "channel": "spindle_current_a",
             "lead_lag_min": 30,
             "corr": 0.81,
+            "upstream_knobs": [],
             "effect_after_anchor": 6.02,
             "score": 1.0125,
             "below_threshold": false,
@@ -121,6 +127,28 @@
             "channel": "temp_c",
             "lead_lag_min": 0,
             "corr": 0.667,
+            "upstream_knobs": [
+              {
+                "knob": "coolant_flow_l_min",
+                "recorded": true
+              },
+              {
+                "knob": "spindle_speed_rpm",
+                "recorded": true
+              },
+              {
+                "knob": "duty_cycle_pct",
+                "recorded": false
+              },
+              {
+                "knob": "wheel_dress_depth_mm",
+                "recorded": true
+              },
+              {
+                "knob": "开机预热是否到位",
+                "recorded": false
+              }
+            ],
             "effect_after_anchor": 1.62,
             "score": 0.667,
             "below_threshold": false,
@@ -132,6 +160,20 @@
             "channel": "coolant_temp_c",
             "lead_lag_min": 120,
             "corr": -0.093,
+            "upstream_knobs": [
+              {
+                "knob": "coolant_flow_l_min",
+                "recorded": true
+              },
+              {
+                "knob": "冷却液箱体温度/是否刚补液",
+                "recorded": false
+              },
+              {
+                "knob": "过滤是否堵",
+                "recorded": false
+              }
+            ],
             "effect_after_anchor": 0.0,
             "score": 0.0,
             "below_threshold": true,
@@ -143,6 +185,20 @@
             "channel": "ambient_rh",
             "lead_lag_min": 90,
             "corr": 0.069,
+            "upstream_knobs": [
+              {
+                "knob": "车间空调/除湿",
+                "recorded": false
+              },
+              {
+                "knob": "厂房门窗与夜班交接",
+                "recorded": false
+              },
+              {
+                "knob": "压缩空气含水",
+                "recorded": false
+              }
+            ],
             "effect_after_anchor": 0.0,
             "score": 0.0,
             "below_threshold": true,
@@ -182,13 +238,13 @@
           "name": "砂轮钝化或堵塞",
           "score": 0.792,
           "evidence": {
-            "vibration_mm_s": {
-              "lead_lag_min": 60,
-              "corr": 0.775
-            },
             "spindle_current_a": {
               "lead_lag_min": 30,
               "corr": 0.81
+            },
+            "vibration_mm_s": {
+              "lead_lag_min": 60,
+              "corr": 0.775
             }
           },
           "action": "停机金刚石笔修整砂轮（0.02 mm/次），修整后首件复测圆度，再决定要不要动进给",
@@ -205,6 +261,8 @@
       "machine_id": "M02",
       "n_machine": 7200,
       "n_cmm": 720,
+      "mask_dropped": 0,
+      "warmup_skip_min": 0,
       "aligned": 720,
       "dropped": 0,
       "out_of_spec": {
@@ -231,6 +289,28 @@
             "channel": "temp_c",
             "lead_lag_min": 180,
             "corr": -0.178,
+            "upstream_knobs": [
+              {
+                "knob": "coolant_flow_l_min",
+                "recorded": true
+              },
+              {
+                "knob": "spindle_speed_rpm",
+                "recorded": true
+              },
+              {
+                "knob": "duty_cycle_pct",
+                "recorded": false
+              },
+              {
+                "knob": "wheel_dress_depth_mm",
+                "recorded": true
+              },
+              {
+                "knob": "开机预热是否到位",
+                "recorded": false
+              }
+            ],
             "effect_after_anchor": null,
             "score": 0.445,
             "below_threshold": false,
@@ -242,6 +322,7 @@
             "channel": "vibration_mm_s",
             "lead_lag_min": 30,
             "corr": -0.193,
+            "upstream_knobs": [],
             "effect_after_anchor": null,
             "score": 0.2413,
             "below_threshold": false,
@@ -253,6 +334,20 @@
             "channel": "ambient_rh",
             "lead_lag_min": -120,
             "corr": -0.175,
+            "upstream_knobs": [
+              {
+                "knob": "车间空调/除湿",
+                "recorded": false
+              },
+              {
+                "knob": "厂房门窗与夜班交接",
+                "recorded": false
+              },
+              {
+                "knob": "压缩空气含水",
+                "recorded": false
+              }
+            ],
             "effect_after_anchor": null,
             "score": 0.175,
             "below_threshold": false,
@@ -264,6 +359,7 @@
             "channel": "spindle_current_a",
             "lead_lag_min": -150,
             "corr": -0.152,
+            "upstream_knobs": [],
             "effect_after_anchor": null,
             "score": 0.152,
             "below_threshold": false,
@@ -275,6 +371,20 @@
             "channel": "coolant_temp_c",
             "lead_lag_min": 180,
             "corr": 0.123,
+            "upstream_knobs": [
+              {
+                "knob": "coolant_flow_l_min",
+                "recorded": true
+              },
+              {
+                "knob": "冷却液箱体温度/是否刚补液",
+                "recorded": false
+              },
+              {
+                "knob": "过滤是否堵",
+                "recorded": false
+              }
+            ],
             "effect_after_anchor": null,
             "score": 0.0,
             "below_threshold": true,
