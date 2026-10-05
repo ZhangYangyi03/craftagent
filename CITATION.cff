@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "craftagent: manufacturing process data to anomaly attribution"
+abstract: "Aligns machine condition logs with CMM inspection on a common time axis, detects change points and attributes cause, using only the Python standard library. Ground truth is planted in the synthetic data and five acceptance checks are run against it."
+authors:
+  - family-names: Zhang
+    given-names: Yangyi
+    affiliation: Georgetown University
+repository-code: "https://github.com/ZhangYangyi03/craftagent"
+license: Apache-2.0
+type: software
+keywords: [manufacturing, change point detection, attribution, standard library]
