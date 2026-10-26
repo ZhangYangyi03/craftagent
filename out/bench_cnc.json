@@ -1,0 +1,105 @@
+{
+  "legal": {
+    "total": 64,
+    "admitted": 64,
+    "false_refusal_rate": 0.0,
+    "examples": []
+  },
+  "planted": {
+    "total": 284,
+    "caught": 284,
+    "caught_by_intended_rule": 244,
+    "missed": [],
+    "wrong_rule": [
+      [
+        "accel_limit",
+        "0.05 mm move at F6000",
+        [
+          "quality_predict"
+        ]
+      ],
+      [
+        "accel_limit",
+        "0.05 mm move at F6000",
+        [
+          "quality_predict"
+        ]
+      ],
+      [
+        "accel_limit",
+        "0.05 mm move at F6000",
+        [
+          "quality_predict"
+        ]
+      ],
+      [
+        "accel_limit",
+        "0.05 mm move at F6000",
+        [
+          "quality_predict"
+        ]
+      ],
+      [
+        "accel_limit",
+        "0.05 mm move at F6000",
+        [
+          "quality_predict"
+        ]
+      ]
+    ]
+  },
+  "mutation_control": {
+    "axis_limit": {
+      "planted": 40,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "feed_limit": {
+      "planted": 40,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "accel_limit": {
+      "planted": 40,
+      "still_caught_with_rule_off": 40,
+      "caught_by_with_rule_off": {
+        "quality_predict": 40
+      }
+    },
+    "radius_limit": {
+      "planted": 40,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "spindle": {
+      "planted": 40,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "quality_predict": {
+      "planted": 40,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "table_crash": {
+      "planted": 1,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "clamp_crash": {
+      "planted": 1,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "holder_crash": {
+      "planted": 1,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    },
+    "rapid_into_stock": {
+      "planted": 1,
+      "still_caught_with_rule_off": 0,
+      "caught_by_with_rule_off": {}
+    }
+  }
+}

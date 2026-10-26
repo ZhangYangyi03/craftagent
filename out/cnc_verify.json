@@ -1,0 +1,145 @@
+{
+  "verify": {
+    "gate_on": {
+      "gate_on": true,
+      "passed": true,
+      "checks": [
+        {
+          "name": "变点定位（±2 次走刀）",
+          "ok": true,
+          "detail": "16 / 16 条带故障的程序，变点落在坏处 ±2 次走刀内"
+        },
+        {
+          "name": "归因首位（进给，按效应量）",
+          "ok": true,
+          "detail": "16 / 16 条程序，变点前后动得最多的通道是进给"
+        },
+        {
+          "name": "健康程序不误报",
+          "ok": true,
+          "detail": "0 / 8 条健康程序被报出强变点（分数>=3）"
+        },
+        {
+          "name": "质量超差能被数出来",
+          "ok": null,
+          "detail": "0 / 0 条跑完链路的故障程序有超差走刀（另 16 条被门提前拦下）"
+        }
+      ],
+      "n_bad_cases": 16,
+      "n_clean_cases": 8,
+      "refused_by_gate": 16,
+      "detail": {
+        "caught_at_gate": 16,
+        "needed_post_hoc": 0
+      }
+    },
+    "gate_off": {
+      "gate_on": false,
+      "passed": true,
+      "checks": [
+        {
+          "name": "变点定位（±2 次走刀）",
+          "ok": true,
+          "detail": "16 / 16 条带故障的程序，变点落在坏处 ±2 次走刀内"
+        },
+        {
+          "name": "归因首位（进给，按效应量）",
+          "ok": true,
+          "detail": "16 / 16 条程序，变点前后动得最多的通道是进给"
+        },
+        {
+          "name": "健康程序不误报",
+          "ok": true,
+          "detail": "0 / 8 条健康程序被报出强变点（分数>=3）"
+        },
+        {
+          "name": "质量超差能被数出来",
+          "ok": true,
+          "detail": "16 / 16 条跑完链路的故障程序有超差走刀（另 0 条被门提前拦下）"
+        }
+      ],
+      "n_bad_cases": 16,
+      "n_clean_cases": 8,
+      "refused_by_gate": 0,
+      "detail": {
+        "caught_at_gate": 0,
+        "needed_post_hoc": 16
+      }
+    }
+  },
+  "parity": {
+    "zigzag_arcs": {
+      "ok": true,
+      "max_dv_mm_s": 3.300000000194814e-05,
+      "max_dt_s": 4.21999999833389e-07,
+      "worst_v": {
+        "line": 2,
+        "c_peak": 33.333333,
+        "py_peak": 33.3333
+      },
+      "worst_t": {
+        "line": 6,
+        "c": 2.004641578,
+        "py": 2.004642
+      },
+      "t_total_c": 31.301386617,
+      "t_total_py": 31.301391,
+      "c_perf": {
+        "plan_us": 62.5,
+        "ticks": 16719,
+        "tick_us_mean": 0.1286,
+        "tick_us_max": 24.9
+      },
+      "segments": 20
+    },
+    "tiny_segments": {
+      "ok": true,
+      "max_dv_mm_s": 3.300000000017178e-05,
+      "max_dt_s": 2.2199999999937547e-07,
+      "worst_v": {
+        "line": 4,
+        "c_peak": 8.333333,
+        "py_peak": 8.3333
+      },
+      "worst_t": {
+        "line": 4,
+        "c": 0.008777778,
+        "py": 0.008778
+      },
+      "t_total_c": 0.065555556,
+      "t_total_py": 0.065556,
+      "c_perf": {
+        "plan_us": 50.1,
+        "ticks": 46,
+        "tick_us_mean": 0.0565,
+        "tick_us_max": 0.1
+      },
+      "segments": 10
+    },
+    "long_rapid": {
+      "ok": true,
+      "max_dv_mm_s": 3.300000000017178e-05,
+      "max_dt_s": 3.5600000103386265e-07,
+      "worst_v": {
+        "line": 4,
+        "c_peak": 20.0,
+        "py_peak": 20.0
+      },
+      "worst_t": {
+        "line": 4,
+        "c": 20.009169356,
+        "py": 20.009169
+      },
+      "t_total_c": 35.018338711,
+      "t_total_py": 35.018338,
+      "c_perf": {
+        "plan_us": 107.7,
+        "ticks": 15002,
+        "tick_us_mean": 0.0594,
+        "tick_us_max": 38.0
+      },
+      "segments": 2
+    },
+    "all_ok": true
+  }
+}

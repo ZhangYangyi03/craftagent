@@ -5,6 +5,8 @@ from .pipeline import run as run_pipeline
 from .ask import answer, summary_text
 from . import report as report_mod, verify as verify_mod
 from . import annotation as annot_mod, grader as grader_mod, fieldwork as fw_mod
+from . import cnc as cnc_mod, gate_cnc as gate_mod
+from . import drawing as drawing_mod, cam as cam_mod, feeds as feeds_mod
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="craftagent", description="精密制造工艺数据 -> 异常归因")
@@ -55,7 +57,210 @@ def main(argv=None):
     g.add_argument("--auto-mask", action="store_true",
                    help="按标注里的 invalid_when 自动裁段重算（预热段默认 120 分钟）")
 
+    c = sub.add_parser("cnc", help="G 代码 -> 内核 -> 门 -> 虚拟机床 -> 归因（端到端）")
+    csub = c.add_subparsers(dest="cnc_cmd", required=True)
+    ca_ = csub.add_parser("analyse", help="一条 .nc 程序跑完整链")
+    ca_.add_argument("program", help="G 代码文件路径")
+    ca_.add_argument("--spec", type=float, default=8.5)
+    ca_.add_argument("--out", default="out/cnc_report.json")
+    ca_.add_argument("--gate-off", action="store_true", help="关掉安全门，直接规划")
+    ca_.add_argument("--no-c", action="store_true", help="不跑 C 内核对拍")
+    cv = csub.add_parser("verify", help="拿真值验收这条链，并跑 C/Python 对拍")
+    cv.add_argument("--cases", type=int, default=24)
+    cv.add_argument("--out", default="out/cnc_verify.json")
+    cg = csub.add_parser("gate", help="只跑安全门，报放行/拒绝和理由")
+    cg.add_argument("program")
+    cb = csub.add_parser("bench", help="安全门的两个数 + 每条规则的消融对照")
+    cb.add_argument("--out", default="out/bench_cnc.json")
+
+    # ---- 图纸 -> 参数 -> G 代码 -> 门（这条链的上游）
+    cm = csub.add_parser("cam", help="DXF 图纸 -> 查表定参数 -> G 代码 -> 过门")
+    cm.add_argument("drawing", help="DXF 图纸路径")
+    cm.add_argument("--material", default="P",
+                    help="材料组：P 钢 / M 不锈钢 / K 铸铁 / N 铝 / S 钛")
+    cm.add_argument("--op", default="rough", choices=list(feeds_mod.OPERATIONS))
+    cm.add_argument("--diameter", type=float, default=6.0)
+    cm.add_argument("--flutes", type=int, default=3)
+    cm.add_argument("--tool-material", default="carbide",
+                    choices=list(feeds_mod.TOOL_MATERIALS))
+    cm.add_argument("--ap", type=float, default=1.5, help="每刀轴向切深 mm")
+    cm.add_argument("--conservative", type=float, default=1.0,
+                    help="乘到每齿进给上的保守系数（<1 更慢）")
+    cm.add_argument("--stock", default=None,
+                    help="毛坯 x0;y0;x1;y1;top_z;thickness（用分号，负号开头会被 "
+                         "argparse 当成选项）；不给就按轮廓包围盒推")
+    cm.add_argument("--out-nc", default="out/cam.nc")
+    cm.add_argument("--out", default="out/cam.json")
+
+    cv2 = csub.add_parser("cam-verify", help="图纸->参数->G代码->门 这条链的验收（出数）")
+    cv2.add_argument("--out", default="out/cam_verify.json")
+
+    cf = csub.add_parser("feeds", help="打印切削参数手册，或查一档参数")
+    cf.add_argument("--material", default=None)
+    cf.add_argument("--op", default="rough", choices=list(feeds_mod.OPERATIONS))
+    cf.add_argument("--diameter", type=float, default=10.0)
+    cf.add_argument("--flutes", type=int, default=4)
+    cf.add_argument("--tool-material", default="carbide",
+                    choices=list(feeds_mod.TOOL_MATERIALS))
+    cf.add_argument("--ap", type=float, default=1.0)
+
     ns = p.parse_args(argv)
+    if ns.cmd == "cnc":
+        if ns.cnc_cmd == "feeds":
+            if ns.material is None:
+                print("%-4s %-16s %6s %8s %8s %8s"
+                      % ("组", "材料", "HSS", "carbide", "coated", "kc"))
+                for key, label, hss, carb, coat, kc in feeds_mod.table():
+                    print("%-4s %-16s %6.0f %8.0f %8.0f %8.0f"
+                          % (key, label, hss, carb, coat, kc))
+                return 0
+            tool = feeds_mod.Tool(ns.diameter, ns.flutes, ns.tool_material)
+            ch = feeds_mod.choose(ns.material, ns.op, tool,
+                                  feeds_mod.Machine(), ap_mm=ns.ap)
+            print("材料 %s / 工序 %s / 刀具 %s"
+                  % (ns.material, ns.op, tool.name))
+            print("  vc        %.1f m/min" % ch.vc_m_min)
+            print("  主轴 S    %.0f rpm%s"
+                  % (ch.rpm, ("（表中值 %.0f 被机床上限夹住）" % ch.rpm_raw)
+                     if 'rpm_high' in ch.clamped else ""))
+            print("  进给 F    %.0f mm/min（每齿 %.3f mm，每转 %.3f mm）"
+                  % (ch.feed_mm_min, ch.fz_mm, ch.feed_per_rev_mm))
+            print("  切削功率  %.2f kW / 可用 %.2f kW" % (ch.power_kw, ch.power_available_kw))
+            print("  单位切削力 kc %.0f N/mm2（切屑 %.3f mm）" % (ch.kc_n_mm2, ch.fz_mm))
+            if ch.clamped:
+                print("  被夹：%s" % ", ".join(ch.clamped))
+            return 0
+        if ns.cnc_cmd == "cam-verify":
+            from bench import bench_cam
+            res = bench_cam.run(out=ns.out)
+            return 0 if not res['closed_loop']['still_failing'] else 1
+        if ns.cnc_cmd == "cam":
+            text = open(ns.drawing, encoding="utf-8").read()
+            dr = drawing_mod.read_dxf(text)
+            print("图纸 %s：%d 条闭合轮廓，%d 个实体"
+                  % (ns.drawing, len(dr.contours), sum(dr.entities_seen.values())))
+            if dr.unsupported:
+                print("  未采用的实体 %d 个（先说出来，不假装图纸是干净的）："
+                      % len(dr.unsupported))
+                for etype, layer, why in dr.unsupported[:6]:
+                    print("    %-12s 图层 %-12s %s" % (etype, layer, why))
+            if dr.unknown_depth:
+                print("  图层名里读不出层深的 %d 个：%s"
+                      % (len(dr.unknown_depth),
+                         ", ".join(sorted({l for l, _ in dr.unknown_depth}))))
+            stock = None
+            if ns.stock:
+                sep = ';' if ';' in ns.stock else ','
+                vals = [float(v) for v in ns.stock.split(sep)]
+                if len(vals) != 6:
+                    print("--stock 要 6 个数：x0;y0;x1;y1;top_z;thickness")
+                    return 2
+                stock = tuple(vals)
+            tool = feeds_mod.Tool(ns.diameter, ns.flutes, ns.tool_material)
+            # 默认走闭环：查到被拒就降进给再来。一次性参数常常被门拦下，
+            # 而"能用"和"能跑"是两件事——默认输出就该是过得了门的程序。
+            plan, attempts = cam_mod.solve(
+                dr, ns.material, tool, feeds_mod.Machine(),
+                stock=stock, op=ns.op, ap_per_pass=ns.ap,
+                conservative=ns.conservative)
+            for a in attempts:
+                print("  尝试 k=%.3f  %s%s"
+                      % (a.conservative, "放行" if a.verdict.ok else "拒绝",
+                         "" if a.verdict.ok else "：" + a.reason))
+            d = os.path.dirname(ns.out_nc)
+            if d: os.makedirs(d, exist_ok=True)
+            with open(ns.out_nc, "w", encoding="utf-8") as fh:
+                fh.write(plan.text)
+            v = gate_mod.check_text(plan.text, name=ns.out_nc)
+            print("生成 %s：%d 行，%d 次参数决策"
+                  % (ns.out_nc, plan.text.count(chr(10)), len(plan.choices)))
+            print("门：%s" % ("放行" if v.ok else "拒绝"))
+            for rule in v.reasons:
+                print("  [%s] %s" % (rule, v.detail.get(rule)))
+            rep = {'drawing': dr.summary(), 'plan': plan.meta,
+                   'choices': [{'op': c.op, 'rpm': c.rpm,
+                                'feed_mm_min': c.feed_mm_min,
+                                'fz_mm': c.fz_mm, 'ap_mm': c.ap_mm,
+                                'power_kw': c.power_kw,
+                                'clamped': c.clamped} for c in plan.choices],
+                   'gate': {'ok': v.ok, 'reasons': v.reasons, 'detail': v.detail}}
+            d = os.path.dirname(ns.out)
+            if d: os.makedirs(d, exist_ok=True)
+            json.dump(rep, open(ns.out, "w", encoding="utf-8"),
+                      ensure_ascii=False, indent=2)
+            return 0 if v.ok else 1
+        if ns.cnc_cmd == "gate":
+            text = open(ns.program, encoding="utf-8").read()
+            v = gate_mod.check_text(text, name=ns.program)
+            print("%s：%s" % (ns.program, "放行" if v.ok else "拒绝"))
+            for rule in v.reasons:
+                print("  [%s] %s" % (rule, v.detail.get(rule)))
+            return 0 if v.ok else 1
+        if ns.cnc_cmd == "analyse":
+            text = open(ns.program, encoding="utf-8").read()
+            rep = cnc_mod.analyse(text, name=ns.program, spec=ns.spec,
+                                  gate_on=not ns.gate_off)
+            if not rep.get('gate', {}).get('ok', True):
+                print("门拒绝：%s" % rep['gate']['detail'])
+                return 1
+            d = os.path.dirname(ns.out)
+            if d: os.makedirs(d, exist_ok=True)
+            if not ns.no_c:
+                from bench import pair as pair_mod
+                pr = pair_mod.compare(text, name=ns.program)
+                rep['parity'] = pr
+            json.dump(rep, open(ns.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+            q = rep['quality']
+            print("程序 %s：%d 段，%.1f mm，%.2f s" % (ns.program, rep['program']['segments'],
+                                                    rep['program']['path_mm'],
+                                                    rep['program']['t_total_s']))
+            print("质量：中位 %.2f um，最大 %.2f um，超差 %d/%d（规格 %.1f）"
+                  % (q['median'], q['max'], q['over_spec'], q['n'], q['spec']))
+            print("瞬态 %d 次走刀未计入稳态；稳态 %d 次" % (rep['warmup'], q['steady_n']))
+            if rep['change_points']:
+                for cp in rep['change_points']:
+                    print("变点：第 %d 次走刀（G 代码第 %d 行），分数 %.1f"
+                          % (cp['index'], cp['line'], cp['score']))
+            else:
+                print("变点：无（稳态段内没有显著变化）")
+            if rep['parity'] and rep['parity'].get('ok') is not None:
+                pr = rep['parity']
+                print("对拍：%s  max|dv|=%.2e mm/s  max|dt|=%.2e s"
+                      % ("一致" if pr['ok'] else "不一致", pr['max_dv_mm_s'], pr['max_dt_s']))
+            print("归因（按效应量）：%s" % " > ".join(rep['attribution']['by_effect']))
+            print("报告写入 %s" % ns.out)
+            return 0
+        if ns.cnc_cmd == "verify":
+            v = cnc_mod.verify(n_cases=ns.cases)
+            from bench import pair as pair_mod
+            pr = pair_mod.run_all(verbose=False)
+            d = os.path.dirname(ns.out)
+            if d: os.makedirs(d, exist_ok=True)
+            json.dump({'verify': v, 'parity': pr}, open(ns.out, "w", encoding="utf-8"),
+                      ensure_ascii=False, indent=2)
+            all_ok = all(g['passed'] for g in v.values()) and pr['all_ok']
+            print("验收：%s" % ("全过" if all_ok else "有不过的"))
+            for gname, g in v.items():
+                lbl = "门开（事前拦截）" if g['gate_on'] else "门关（事后归因）"
+                print(" %s：%s" % (lbl, "过" if g['passed'] else "不过"))
+                for ck in g['checks']:
+                    mk = "不适用" if ck['ok'] is None else ("过" if ck['ok'] else "不过")
+                    print("  [%s] %s -- %s" % (mk, ck['name'], ck['detail']))
+            for nm, pv in pr.items():
+                if isinstance(pv, dict) and 'segments' in pv:
+                    print("  [%s] 对拍 %s：%d 段，max|dv|=%.2e，max|dt|=%.2e"
+                          % ("过" if pv['ok'] else "不过", nm, pv['segments'],
+                             pv['max_dv_mm_s'], pv['max_dt_s']))
+            print("明细写入 %s" % ns.out)
+            return 0 if all_ok else 1
+        if ns.cnc_cmd == "bench":
+            from bench import bench_cnc
+            r = bench_cnc.run()
+            d = os.path.dirname(ns.out)
+            if d: os.makedirs(d, exist_ok=True)
+            json.dump(r, open(ns.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+            print("明细写入 %s" % ns.out)
+            return 0 if r['legal']['false_refusal_rate'] == 0 else 1
     if ns.cmd == "template":
         rec = annot_mod.blank(machine=ns.machine)
         d = os.path.dirname(ns.out)

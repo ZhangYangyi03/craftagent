@@ -1,0 +1,129 @@
+{
+  "drawing": {
+    "contours": 3,
+    "entities": {
+      "LWPOLYLINE": 3,
+      "CIRCLE": 1,
+      "LINE": 1
+    },
+    "unsupported": [
+      [
+        "LINE",
+        "CUT_-3.0",
+        "开链实体（LINE/ARC 单独一条），需要成环才可切，本版未拼接"
+      ]
+    ],
+    "unknown_depth": [
+      [
+        "NOTES",
+        0
+      ]
+    ],
+    "bounds": [
+      0.0,
+      0.0,
+      60.0,
+      40.0
+    ]
+  },
+  "plan": {
+    "contours": 3,
+    "stock": [
+      -10.0,
+      -10.0,
+      70.0,
+      50.0,
+      0.0,
+      28.0
+    ],
+    "material": "N",
+    "op": "rough",
+    "tool": "D6-3F-carbide",
+    "safe_z": 5.0,
+    "ap_per_pass": 1.5
+  },
+  "choices": [
+    {
+      "op": "rough",
+      "rpm": 12000.0,
+      "feed_mm_min": 620.7796158565025,
+      "fz_mm": 0.01724387821823618,
+      "ap_mm": 1.5,
+      "power_kw": 0.0980769076003293,
+      "clamped": [
+        "rpm_high"
+      ]
+    },
+    {
+      "op": "rough",
+      "rpm": 12000.0,
+      "feed_mm_min": 620.7796158565025,
+      "fz_mm": 0.01724387821823618,
+      "ap_mm": 1.5,
+      "power_kw": 0.0980769076003293,
+      "clamped": [
+        "rpm_high"
+      ]
+    },
+    {
+      "op": "rough",
+      "rpm": 12000.0,
+      "feed_mm_min": 620.7796158565025,
+      "fz_mm": 0.01724387821823618,
+      "ap_mm": 1.5,
+      "power_kw": 0.0980769076003293,
+      "clamped": [
+        "rpm_high"
+      ]
+    },
+    {
+      "op": "rough",
+      "rpm": 12000.0,
+      "feed_mm_min": 620.7796158565025,
+      "fz_mm": 0.01724387821823618,
+      "ap_mm": 1.5,
+      "power_kw": 0.0980769076003293,
+      "clamped": [
+        "rpm_high"
+      ]
+    },
+    {
+      "op": "rough",
+      "rpm": 12000.0,
+      "feed_mm_min": 620.7796158565025,
+      "fz_mm": 0.01724387821823618,
+      "ap_mm": 1.5,
+      "power_kw": 0.0980769076003293,
+      "clamped": [
+        "rpm_high"
+      ]
+    },
+    {
+      "op": "rough",
+      "rpm": 12000.0,
+      "feed_mm_min": 620.7796158565025,
+      "fz_mm": 0.01724387821823618,
+      "ap_mm": 1.5,
+      "power_kw": 0.0980769076003293,
+      "clamped": [
+        "rpm_high"
+      ]
+    },
+    {
+      "op": "rough",
+      "rpm": 12000.0,
+      "feed_mm_min": 620.7796158565025,
+      "fz_mm": 0.01724387821823618,
+      "ap_mm": 1.5,
+      "power_kw": 0.0980769076003293,
+      "clamped": [
+        "rpm_high"
+      ]
+    }
+  ],
+  "gate": {
+    "ok": true,
+    "reasons": [],
+    "detail": {}
+  }
+}

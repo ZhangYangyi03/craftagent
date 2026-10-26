@@ -1,0 +1,102 @@
+{
+  "drawing": {
+    "contours": 3,
+    "entities": {
+      "LWPOLYLINE": 3,
+      "CIRCLE": 1,
+      "LINE": 1
+    },
+    "unsupported": [
+      [
+        "LINE",
+        "CUT_-3.0",
+        "开链实体（LINE/ARC 单独一条），需要成环才可切，本版未拼接"
+      ]
+    ],
+    "unknown_depth": [
+      [
+        "NOTES",
+        0
+      ]
+    ],
+    "bounds": [
+      0.0,
+      0.0,
+      60.0,
+      40.0
+    ]
+  },
+  "one_shot": {
+    "total": 45,
+    "admitted": 38,
+    "admitted_rate": 0.8444,
+    "refused": [
+      {
+        "material": "N",
+        "op": "rough",
+        "tool": "D3-3F-carbide",
+        "reasons": "quality_predict"
+      },
+      {
+        "material": "N",
+        "op": "rough",
+        "tool": "D6-3F-carbide",
+        "reasons": "quality_predict"
+      },
+      {
+        "material": "N",
+        "op": "rough",
+        "tool": "D12-4F-carbide",
+        "reasons": "quality_predict"
+      },
+      {
+        "material": "N",
+        "op": "finish",
+        "tool": "D6-3F-carbide",
+        "reasons": "quality_predict"
+      },
+      {
+        "material": "N",
+        "op": "finish",
+        "tool": "D12-4F-carbide",
+        "reasons": "quality_predict"
+      },
+      {
+        "material": "N",
+        "op": "slot",
+        "tool": "D6-3F-carbide",
+        "reasons": "quality_predict"
+      },
+      {
+        "material": "N",
+        "op": "slot",
+        "tool": "D12-4F-carbide",
+        "reasons": "quality_predict"
+      }
+    ]
+  },
+  "closed_loop": {
+    "refused_to_retry": 7,
+    "recovered": 7,
+    "recovered_rate": 1.0,
+    "rounds_histogram": {
+      "2": 3,
+      "4": 2,
+      "6": 1,
+      "3": 1
+    },
+    "still_failing": []
+  },
+  "generator_self_check": {
+    "checked": 15,
+    "problems": []
+  },
+  "unsupported_said_out_loud": {
+    "open_chain_reported": true,
+    "unknown_depth_reported": true,
+    "unknown_depth_layers": [
+      "NOTES"
+    ],
+    "contours_found": 3
+  }
+}
