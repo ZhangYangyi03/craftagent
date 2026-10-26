@@ -271,5 +271,9 @@ class Gate(object):
         return Verdict(ok, sorted(reasons), detail, lines)
 
 
-def check_text(text, limits=None, rules=None, name='<program>', plan_params=None):
-    return Gate(limits, rules).check_text(text, name=name, plan_params=plan_params)
+def check_text(text, limits=None, rules=None, name='<program>', plan_params=None,
+               fixture=None):
+    """一行检查。fixture 不给时用默认工件——但**调用方应该给**：
+    一块料只有一份真相，门和生成器各用一块料，就会对同一个程序给出两个答案。"""
+    return Gate(limits, rules, fixture=fixture).check_text(
+        text, name=name, plan_params=plan_params)

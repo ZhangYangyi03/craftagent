@@ -7,6 +7,7 @@ from . import report as report_mod, verify as verify_mod
 from . import annotation as annot_mod, grader as grader_mod, fieldwork as fw_mod
 from . import cnc as cnc_mod, gate_cnc as gate_mod
 from . import drawing as drawing_mod, cam as cam_mod, feeds as feeds_mod
+from . import collide as collide_mod
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="craftagent", description="精密制造工艺数据 -> 异常归因")
@@ -89,6 +90,15 @@ def main(argv=None):
     cm.add_argument("--stock", default=None,
                     help="毛坯 x0;y0;x1;y1;top_z;thickness（用分号，负号开头会被 "
                          "argparse 当成选项）；不给就按轮廓包围盒推")
+    cm.add_argument("--offset", default="tool_radius_minus_allow",
+                    choices=('none', 'tool_radius', 'tool_radius_minus_allow'),
+                    help="刀心偏置。默认让刀心离开图纸线一个半径再留 0.3 留量，"
+                         "所以切出来的件是图纸尺寸减 0.3（留给精铣）。"
+                         "选 none 意味着刀心走在图纸线上，件会小一个半径。")
+    cm.add_argument("--finish-allow", type=float, default=0.3,
+                    help="留量 mm，只在 offset=tool_radius_minus_allow 下生效")
+    cm.add_argument("--ramp-deg", type=float, default=5.0,
+                    help="下刀斜插角度。0 = 直插（钻孔用）；铣削用 3~10")
     cm.add_argument("--out-nc", default="out/cam.nc")
     cm.add_argument("--out", default="out/cam.json")
 
@@ -162,7 +172,9 @@ def main(argv=None):
             plan, attempts = cam_mod.solve(
                 dr, ns.material, tool, feeds_mod.Machine(),
                 stock=stock, op=ns.op, ap_per_pass=ns.ap,
-                conservative=ns.conservative)
+                conservative=ns.conservative,
+                offset=ns.offset, finish_allow=ns.finish_allow,
+                ramp_deg=ns.ramp_deg)
             for a in attempts:
                 print("  尝试 k=%.3f  %s%s"
                       % (a.conservative, "放行" if a.verdict.ok else "拒绝",
@@ -171,9 +183,23 @@ def main(argv=None):
             if d: os.makedirs(d, exist_ok=True)
             with open(ns.out_nc, "w", encoding="utf-8") as fh:
                 fh.write(plan.text)
-            v = gate_mod.check_text(plan.text, name=ns.out_nc)
-            print("生成 %s：%d 行，%d 次参数决策"
-                  % (ns.out_nc, plan.text.count(chr(10)), len(plan.choices)))
+            # 门必须用**生成器同一块料**。CLI 这里原来调 check_text 的默认
+            # 毛坯（0,0,60,84），于是 build/solve 里已经放行的程序，
+            # 在这里又被报一次 clamp_crash——同一个程序两次检查两个答案，
+            # 而两次都对，因为它们看的不是同一块料。
+            _sx0, _sy0, _sx1, _sy1, _tz, _th = plan.meta['stock']
+            _fx = collide_mod.Fixture(stock=collide_mod.Stock(
+                _sx0, _sy0, _sx1, _sy1, _tz, _th))
+            v = gate_mod.check_text(plan.text, name=ns.out_nc, fixture=_fx)
+            print("生成 %s：%d 行，%d 次参数决策、%d 条轮廓"
+                  % (ns.out_nc, plan.text.count(chr(10)),
+                     len(plan.choices), plan.meta.get('contours', 0)))
+            rec = (plan.meta.get('offsets') or [{}])[0]
+            print("  刀心偏置 %.2f mm（%s）  下刀 %s  留量 %.2f mm"
+                  % (rec.get('dist', 0.0),
+                     '近似法向' if rec.get('dist') else '无',
+                     ('斜插 %.0f°' % ns.ramp_deg) if ns.ramp_deg > 0 else '直插',
+                     ns.finish_allow if ns.offset == 'tool_radius_minus_allow' else 0.0))
             print("门：%s" % ("放行" if v.ok else "拒绝"))
             for rule in v.reasons:
                 print("  [%s] %s" % (rule, v.detail.get(rule)))

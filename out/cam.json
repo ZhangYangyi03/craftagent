@@ -1,24 +1,11 @@
 {
   "drawing": {
-    "contours": 3,
+    "contours": 2,
     "entities": {
-      "LWPOLYLINE": 3,
-      "CIRCLE": 1,
-      "LINE": 1
+      "LWPOLYLINE": 2
     },
-    "unsupported": [
-      [
-        "LINE",
-        "CUT_-3.0",
-        "开链实体（LINE/ARC 单独一条），需要成环才可切，本版未拼接"
-      ]
-    ],
-    "unknown_depth": [
-      [
-        "NOTES",
-        0
-      ]
-    ],
+    "unsupported": [],
+    "unknown_depth": [],
     "bounds": [
       0.0,
       0.0,
@@ -27,98 +14,69 @@
     ]
   },
   "plan": {
-    "contours": 3,
+    "contours": 2,
     "stock": [
-      -10.0,
-      -10.0,
-      70.0,
-      50.0,
+      -20.0,
+      -20.0,
+      80.0,
+      60.0,
       0.0,
-      28.0
+      10.0
     ],
-    "material": "N",
+    "material": "P",
     "op": "rough",
-    "tool": "D6-3F-carbide",
+    "tool": "D10-3F-carbide",
     "safe_z": 5.0,
-    "ap_per_pass": 1.5
+    "ap_per_pass": 1.5,
+    "ramp_deg": 5.0,
+    "offset": "tool_radius_minus_allow",
+    "finish_allow": 0.3,
+    "offsets": [
+      {
+        "layer": "CUT_-3.0",
+        "role": "outer",
+        "dist": 4.7,
+        "inward": false,
+        "kind": "point_normal_approx",
+        "miter_clamped_vertices": []
+      },
+      {
+        "layer": "POCKET_-1.5",
+        "role": "inner",
+        "dist": 4.7,
+        "inward": true,
+        "kind": "point_normal_approx",
+        "miter_clamped_vertices": []
+      }
+    ]
   },
   "choices": [
     {
       "op": "rough",
-      "rpm": 12000.0,
-      "feed_mm_min": 620.7796158565025,
-      "fz_mm": 0.01724387821823618,
+      "rpm": 2864.7889756541163,
+      "feed_mm_min": 334.2424323733257,
+      "fz_mm": 0.038890872965260115,
       "ap_mm": 1.5,
-      "power_kw": 0.0980769076003293,
-      "clamped": [
-        "rpm_high"
-      ]
+      "power_kw": 0.22333890908946089,
+      "clamped": []
     },
     {
       "op": "rough",
-      "rpm": 12000.0,
-      "feed_mm_min": 620.7796158565025,
-      "fz_mm": 0.01724387821823618,
+      "rpm": 2864.7889756541163,
+      "feed_mm_min": 334.2424323733257,
+      "fz_mm": 0.038890872965260115,
       "ap_mm": 1.5,
-      "power_kw": 0.0980769076003293,
-      "clamped": [
-        "rpm_high"
-      ]
+      "power_kw": 0.22333890908946089,
+      "clamped": []
     },
     {
       "op": "rough",
-      "rpm": 12000.0,
-      "feed_mm_min": 620.7796158565025,
-      "fz_mm": 0.01724387821823618,
+      "rpm": 2864.7889756541163,
+      "feed_mm_min": 334.2424323733257,
+      "fz_mm": 0.038890872965260115,
       "ap_mm": 1.5,
-      "power_kw": 0.0980769076003293,
-      "clamped": [
-        "rpm_high"
-      ]
-    },
-    {
-      "op": "rough",
-      "rpm": 12000.0,
-      "feed_mm_min": 620.7796158565025,
-      "fz_mm": 0.01724387821823618,
-      "ap_mm": 1.5,
-      "power_kw": 0.0980769076003293,
-      "clamped": [
-        "rpm_high"
-      ]
-    },
-    {
-      "op": "rough",
-      "rpm": 12000.0,
-      "feed_mm_min": 620.7796158565025,
-      "fz_mm": 0.01724387821823618,
-      "ap_mm": 1.5,
-      "power_kw": 0.0980769076003293,
-      "clamped": [
-        "rpm_high"
-      ]
-    },
-    {
-      "op": "rough",
-      "rpm": 12000.0,
-      "feed_mm_min": 620.7796158565025,
-      "fz_mm": 0.01724387821823618,
-      "ap_mm": 1.5,
-      "power_kw": 0.0980769076003293,
-      "clamped": [
-        "rpm_high"
-      ]
-    },
-    {
-      "op": "rough",
-      "rpm": 12000.0,
-      "feed_mm_min": 620.7796158565025,
-      "fz_mm": 0.01724387821823618,
-      "ap_mm": 1.5,
-      "power_kw": 0.0980769076003293,
-      "clamped": [
-        "rpm_high"
-      ]
+      "power_kw": 0.22333890908946089,
+      "clamped": []
     }
   ],
   "gate": {

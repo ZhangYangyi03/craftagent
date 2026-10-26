@@ -41,7 +41,14 @@ def _demo_dxf():
         return ("0\nLINE\n8\n%s\n10\n%.4f\n20\n%.4f\n11\n%.4f\n21\n%.4f\n"
                 % (layer, x0, y0, x1, y1))
 
-    d = "0\nSECTION\n2\nENTITIES\n"
+    # 块引用：真实图纸里重复特征（型腔、孔组）一定是块 + 多次引用。
+    # 不展开就等于把件少做一大半，而图纸仍然"读完了"。
+    blocks = ("0\nSECTION\n2\nBLOCKS\n"
+              "0\nBLOCK\n8\n0\n2\nBOLT\n70\n0\n10\n0\n20\n0\n"
+              + poly("HOLE_-4.0", [(0, 0), (6, 0), (6, 6), (0, 6)])
+              + "0\nENDBLK\n0\nENDSEC\n")
+
+    d = d_blocks = blocks + "0\nSECTION\n2\nENTITIES\n"
     d += poly("CUT_-3.0", [(0, 0), (60, 0), (60, 40), (0, 40)])
     d += poly("POCKET_-1.5", [(10, 10), (30, 10), (30, 25), (10, 25)])
     d += circ("HOLE_-6.0", 45, 20, 4)
@@ -51,6 +58,8 @@ def _demo_dxf():
     # 造成的分叉。前者不该被报成"没东西可切"，后者必须被**数出来**。
     for e in ((0, 0, 15, 0), (15, 0, 15, 8), (15, 8, 0, 8), (0, 8, 0, 0)):
         d += line("RECT_-2.0", *e)
+    d += ("0\nINSERT\n8\nHOLE_-4.0\n2\nBOLT\n10\n5\n20\n32\n"
+          "0\nINSERT\n8\nHOLE_-4.0\n2\nBOLT\n10\n50\n20\n32\n")
     d += "0\nENDSEC\n0\nEOF\n"
     return d
 
@@ -118,8 +127,22 @@ def run(out=None, verbose=True):
         'stitched_layers': dr2.stitch.as_dict()['layers'] if dr2.stitch else {},
     }
 
+    # ---- 5. 刀心偏置：偏对了件才是图纸尺寸；偏错是沉默的（程序全合法）
+    tool10 = feeds_mod.Tool(10.0, 3, 'carbide')
+    off_check = {}
+    for mode, allow in (('none', 0.0), ('tool_radius', 0.0),
+                        ('tool_radius_minus_allow', 0.3)):
+        pl = cam_mod.build(dr, 'P', tool10, feeds_mod.Machine(), stock=stock,
+                           op='rough', ap_per_pass=1.5, offset=mode,
+                           finish_allow=allow, plan_ok=False)
+        rec = pl.meta['offsets'][0]
+        off_check[mode] = {'offset_mm': round(rec['dist'], 4),
+                           'kind': rec['kind'],
+                           'clamped_vertices': len(rec['miter_clamped_vertices'])}
+
     res = {
         'drawing': dr2.summary(),
+        'tool_offset': off_check,
         'one_shot': {'total': len(combos), 'admitted': one_shot_ok,
                      'admitted_rate': round(one_shot_ok / max(1, len(combos)), 4),
                      'refused': one_shot_refused},
@@ -142,6 +165,9 @@ def run(out=None, verbose=True):
               % (15, len(gen_problems)))
         print("读不懂的说明了：开链 %s；无深度 %s"
               % (said['open_chain_reported'], said['unknown_depth_reported']))
+        print("刀心偏置：%s"
+              % "；".join("%s=%.2fmm" % (k, v['offset_mm'])
+                          for k, v in off_check.items()))
         print("拼环：从 LINE 拼出 %d 个闭合轮廓（%s）"
               % (said['stitched_cycles'],
                  ", ".join("%s=%d" % (k, v['cycles'])

@@ -245,6 +245,344 @@ class TestStitching(unittest.TestCase):
         self.assertTrue(dr.stitch.as_dict()['open_chains'])
 
 
+def _nl(*items):
+    return "\n".join(str(x) for p in items for x in p) + "\n"
+
+
+def _block_dxf(block_name, block_items, insert_items, extra_ents=()):
+    d = _nl((0, "SECTION"), (2, "BLOCKS"))
+    d += _nl(*block_items)
+    d += _nl((0, "ENDBLK"))
+    d += _nl((0, "ENDSEC"))
+    d += _nl((0, "SECTION"), (2, "ENTITIES"))
+    d += _nl(*insert_items)
+    if extra_ents:
+        d += _nl(*extra_ents)
+    d += _nl((0, "ENDSEC"), (0, "EOF"))
+    return d
+
+
+SQUARE_IN_BLOCK = [
+    (0, "BLOCK"), (8, "0"), (2, "SQ"), (70, 0), (10, 0), (20, 0),
+    (0, "LWPOLYLINE"), (8, "POCKET_-1.5"), (90, 4), (70, 1),
+    (10, 0), (20, 0), (10, 10), (20, 0), (10, 10), (20, 6), (10, 0), (20, 6),
+]
+
+
+class TestBlocks(unittest.TestCase):
+    """块引用（INSERT）展开。
+
+    真实图纸里重复出现的特征——型腔、孔组、倒角——几乎一定是一个块
+    + 多次引用。不展开就等于把这些特征全部丢掉，而丢掉之后图纸看上去
+    仍然"读完了"，只是件少做了一大半。
+    """
+
+    def test_insert_is_expanded_with_translation(self):
+        d = _block_dxf("SQ", SQUARE_IN_BLOCK,
+                       [(0, "INSERT"), (8, "POCKET_-1.5"), (2, "SQ"),
+                        (10, 30), (20, 20)])
+        dr = drawing.read_dxf(d)
+        self.assertEqual(len(dr.contours), 1)
+        bx = tuple(round(v, 3) for v in dr.contours[0].bounds())
+        self.assertEqual(bx, (30.0, 20.0, 40.0, 26.0))
+        self.assertAlmostEqual(abs(dr.contours[0].area()), 60.0, places=6)
+        self.assertEqual(dr.unsupported, [])
+
+    def test_insert_rotation_is_applied(self):
+        """旋转必须真的转。
+
+        转错的后果不是"报错"，是"件做在错的位置上"——而每条指令都合法。
+        这里用 90 度，因为 10x6 的矩形转完必须变成 6x10（宽高互换），
+        一个把旋转忽略掉的实现会让宽高仍然保持 10 和 6。
+        """
+        d = _block_dxf("SQ", SQUARE_IN_BLOCK,
+                       [(0, "INSERT"), (8, "POCKET_-1.5"), (2, "SQ"),
+                        (10, 20), (20, 20), (50, 90)])
+        dr = drawing.read_dxf(d)
+        self.assertEqual(len(dr.contours), 1)
+        x0, y0, x1, y1 = dr.contours[0].bounds()
+        self.assertAlmostEqual(x1 - x0, 6.0, places=6)
+        self.assertAlmostEqual(y1 - y0, 10.0, places=6)
+
+    def test_insert_scale_is_applied(self):
+        d = _block_dxf("SQ", SQUARE_IN_BLOCK,
+                       [(0, "INSERT"), (8, "POCKET_-2.5"), (2, "SQ"),
+                        (10, 0), (20, 0), (41, 2), (42, 2)])
+        dr = drawing.read_dxf(d)
+        self.assertEqual(len(dr.contours), 1)
+        self.assertAlmostEqual(abs(dr.contours[0].area()), 240.0, places=6)
+
+    def test_block_base_point_is_subtracted(self):
+        """块基点不是原点时，引用必须减去基点。
+
+        基点用错的表现是整块偏移一个固定量——量一下就知道，但只有量才知道。
+        """
+        items = list(SQUARE_IN_BLOCK)
+        # 把基点从 (0,0) 改到 (10,6)，也就是矩形自己的右上角。
+        # SQUARE_IN_BLOCK 里组码 (10,0),(20,0) 在索引 4、5，紧跟在 (70,0) 后面。
+        self.assertEqual(items[3], (70, 0))
+        items[4] = (10, 10)
+        items[5] = (20, 6)
+        d = _block_dxf("SQ", items,
+                       [(0, "INSERT"), (8, "POCKET_-1.5"), (2, "SQ"),
+                        (10, 100), (20, 100)])
+        dr = drawing.read_dxf(d)
+        self.assertEqual(len(dr.contours), 1)
+        x0, y0, x1, y1 = dr.contours[0].bounds()
+        # 基点 (10,6) 落到 (100,100)，所以矩形是 (90,94)-(100,100)
+        self.assertAlmostEqual(x0, 90.0, places=6)
+        self.assertAlmostEqual(y0, 94.0, places=6)
+
+    def test_missing_block_is_reported_not_silently_dropped(self):
+        d = _block_dxf("SQ", SQUARE_IN_BLOCK,
+                       [(0, "INSERT"), (8, "POCKET_-1.5"), (2, "NOPE"),
+                        (10, 0), (20, 0)])
+        dr = drawing.read_dxf(d)
+        self.assertEqual(len(dr.contours), 0)
+        self.assertTrue(any('没有的块' in w for _, _, w in dr.unsupported))
+
+    def test_circular_block_reference_terminates(self):
+        """A 引用 B、B 引用 A 是合法 DXF，但照直展开会无限递归。
+
+        无限递归的表现是"卡住"——最难看出原因的那种失败，
+        而且它的表现和"这台机器很慢"一模一样。
+        """
+        d = _nl((0, "SECTION"), (2, "BLOCKS"))
+        d += _nl((0, "BLOCK"), (8, "0"), (2, "A"), (70, 0), (10, 0), (20, 0))
+        d += _nl((0, "INSERT"), (8, "0"), (2, "B"), (10, 0), (20, 0))
+        d += _nl((0, "ENDBLK"))
+        d += _nl((0, "BLOCK"), (8, "0"), (2, "B"), (70, 0), (10, 0), (20, 0))
+        d += _nl((0, "INSERT"), (8, "0"), (2, "A"), (10, 0), (20, 0))
+        d += _nl((0, "ENDBLK"))
+        d += _nl((0, "ENDSEC"))
+        d += _nl((0, "SECTION"), (2, "ENTITIES"))
+        d += _nl((0, "INSERT"), (8, "CUT_-1"), (2, "A"), (10, 0), (20, 0))
+        d += _nl((0, "ENDSEC"), (0, "EOF"))
+        dr = drawing.read_dxf(d)
+        self.assertTrue(any('循环' in w for _, _, w in dr.unsupported))
+
+    def test_annotation_entities_are_skipped_quietly(self):
+        """标注/文字不参与切削，跳过是对的，而且要不出声。
+
+        把它们报成"读不懂"，每张真实图纸都会带几十条噪声，
+        噪声里的真问题会被淹掉。
+        """
+        d = _block_dxf("SQ", SQUARE_IN_BLOCK,
+                       [(0, "INSERT"), (8, "POCKET_-1.5"), (2, "SQ"),
+                        (10, 0), (20, 0)],
+                       extra_ents=[(0, "TEXT"), (8, "NOTES"), (1, "hello"),
+                                   (0, "DIMENSION"), (8, "NOTES")])
+        dr = drawing.read_dxf(d)
+        self.assertEqual(len(dr.contours), 1)
+        self.assertEqual(dr.unsupported, [])
+
+
+class TestPathGeneration(unittest.TestCase):
+    """刀心偏置与下刀方式。
+
+    这两件事的错法都是**沉默**的：偏置算小了件就小一圈，
+    直插下刀会把刀顶崩——两者都不产生任何一行非法指令。
+    所以它们必须有测试按数字盯住。
+    """
+
+    RECT = [(0, 0), (60, 0), (60, 40), (0, 40)]
+
+    def test_offset_of_a_rectangle_is_exact(self):
+        """矩形偏 5 mm 必须正好是 (-5,-5)(65,-5)(65,45)(-5,45)。
+
+        第一版这里给的是 (-4.564,-4.564)：它把余弦夹了下限 0.2，
+        于是直角的 miter 系数算成 1.291 而不是 1.414。
+        件会小 0.44 mm，每次都在，量一下才知道。
+        """
+        got = cam.offset_contour(self.RECT, 5.0)
+        want = [(-5.0, -5.0), (65.0, -5.0), (65.0, 45.0), (-5.0, 45.0)]
+        for g, w in zip(got, want):
+            self.assertAlmostEqual(g[0], w[0], places=6)
+            self.assertAlmostEqual(g[1], w[1], places=6)
+
+    def test_offset_direction_follows_winding(self):
+        """绕向反过来时，偏移也必须反过来。
+
+        一个靠"假设逆时针"写的实现，在顺时针轮廓上会往件里面偏一个刀半径。
+        """
+        ccw = cam.offset_contour(self.RECT, 5.0)
+        cw = cam.offset_contour(list(reversed(self.RECT)), 5.0)
+        self.assertGreater(abs(cam._signed_area(ccw)), abs(cam._signed_area(self.RECT)))
+        self.assertGreater(abs(cam._signed_area(cw)), abs(cam._signed_area(self.RECT)))
+
+    def test_ramp_entry_actually_descends_while_moving(self):
+        """斜插的每一行必须同时有 xy 位移和 z 下降。
+
+        只有 z 没有 xy 那还是直插；有 xy 但 z 一步到位也还是直插。
+        这条测试盯的是"下刀过程真的斜着"。
+        """
+        pts = self.RECT
+        steps = cam._ramp_in(pts, 0, 2.0, 5.0, 300.0)
+        self.assertTrue(steps, '斜插没有产生任何一步')
+        self.assertAlmostEqual(steps[-1][2], -2.0, places=6)
+        prev = (pts[0][0], pts[0][1], 0.0)
+        for x, y, z, f in steps:
+            moved = abs(x - prev[0]) + abs(y - prev[1])
+            dropped = abs(z - prev[2])
+            self.assertGreater(moved, 1e-9, '这一步只有 z，还是直插')
+            self.assertGreater(dropped, 1e-9, '这一步没有下降')
+            self.assertLess(z, 1e-12)
+            prev = (x, y, z)
+
+    def test_ramp_angle_zero_means_plunge(self):
+        self.assertEqual(cam._ramp_in(self.RECT, 0, 2.0, 0.0, 300.0), [])
+
+    def test_build_records_the_offset_it_applied(self):
+        dr = drawing.read_dxf(_dxf_lines_only(
+            [(0, 0, 60, 0), (60, 0, 60, 40), (60, 40, 0, 40), (0, 40, 0, 0)]))
+        plan = cam.build(dr, material='P', tool=feeds.Tool(10.0, 3, 'carbide'),
+                         op='rough', ap_per_pass=1.5, offset='tool_radius')
+        rec = plan.meta['offsets'][0]
+        self.assertAlmostEqual(rec['dist'], 5.0, places=6)
+        self.assertEqual(rec['kind'], 'point_normal_approx')
+        self.assertIn('G1 X-5 Y-5', plan.text)
+        self.assertIn('G1 X65 Y45', plan.text)
+
+    def test_finish_allowance_shrinks_the_offset(self):
+        dr = drawing.read_dxf(_dxf_lines_only(
+            [(0, 0, 60, 0), (60, 0, 60, 40), (60, 40, 0, 40), (0, 40, 0, 0)]))
+        plan = cam.build(dr, material='P', tool=feeds.Tool(10.0, 3, 'carbide'),
+                         op='rough', ap_per_pass=1.5,
+                         offset='tool_radius_minus_allow', finish_allow=0.3)
+        self.assertAlmostEqual(plan.meta['offsets'][0]['dist'], 4.7, places=6)
+        self.assertIn('G1 X-4.7 Y-4.7', plan.text)
+
+    def test_allowance_larger_than_radius_is_refused(self):
+        """留量不小于刀半径时刀心落在件里面，必须拒绝而不是照写。"""
+        dr = drawing.read_dxf(_dxf_lines_only(
+            [(0, 0, 60, 0), (60, 0, 60, 40), (60, 40, 0, 40), (0, 40, 0, 0)]))
+        with self.assertRaises(cam.CamError):
+            cam.build(dr, material='P', tool=feeds.Tool(10.0, 3, 'carbide'),
+                      op='rough', offset='tool_radius_minus_allow',
+                      finish_allow=5.0)
+
+    def test_unknown_offset_mode_is_refused(self):
+        dr = drawing.read_dxf(_dxf_lines_only(
+            [(0, 0, 60, 0), (60, 0, 60, 40), (60, 40, 0, 40), (0, 40, 0, 0)]))
+        with self.assertRaises(cam.CamError):
+            cam.build(dr, material='P', op='rough', offset='comp_left')
+
+
+class TestContourRole(unittest.TestCase):
+    """外轮廓 vs 型腔：刀心偏置的方向由**角色**定，不由绕向定。
+
+    偏错方向是过切（切成废件），而且每一条指令都合法、每一项检查都通过。
+    这是这条链上唯一一个"错得完全看不出来"的地方，所以它必须被按数字盯住。
+    """
+
+    OUTER = [(0, 0), (60, 0), (60, 40), (0, 40)]
+    POCKET = [(10, 10), (30, 10), (30, 25), (10, 25)]
+
+    def _drawing(self, reverse_pocket=False, reverse_outer=False):
+        keys = [("CUT_-3.0", self.OUTER), ("POCKET_-1.5", self.POCKET)]
+        d = "0\nSECTION\n2\nENTITIES\n"
+        for layer, pts in keys:
+            p = list(pts)
+            if (layer.startswith("POCKET") and reverse_pocket) or \
+               (layer.startswith("CUT") and reverse_outer):
+                p.reverse()
+            d += "0\nLWPOLYLINE\n8\n%s\n90\n%d\n70\n1\n" % (layer, len(p))
+            for x, y in p:
+                d += "10\n%.4f\n20\n%.4f\n" % (x, y)
+        d += "0\nENDSEC\n0\nEOF\n"
+        return drawing.read_dxf(d)
+
+    def test_outer_and_pocket_get_their_roles(self):
+        dr = self._drawing()
+        roles = {c.layer: c.role for c in dr.contours}
+        self.assertEqual(roles['CUT_-3.0'], 'outer')
+        self.assertEqual(roles['POCKET_-1.5'], 'inner')
+
+    def test_role_does_not_depend_on_winding(self):
+        """绕向反过来，角色不能变。
+
+        用绕向定"哪边是里面"是一个很自然的错：它在逆时针的图纸上永远对。
+        """
+        for rp in (False, True):
+            for ro in (False, True):
+                dr = self._drawing(reverse_pocket=rp, reverse_outer=ro)
+                roles = {c.layer: c.role for c in dr.contours}
+                self.assertEqual(roles['CUT_-3.0'], 'outer', (rp, ro))
+                self.assertEqual(roles['POCKET_-1.5'], 'inner', (rp, ro))
+
+    def test_pocket_path_moves_inward_and_outer_moves_outward(self):
+        """真正盯住的东西：同一次生成里，两条轮廓的刀心各朝各的方向。
+
+        外轮廓 0..60 偏 5 mm 后应是 -5..65（变大）；
+        型腔 10..30 偏 5 mm 后应是 15..25（变小）。
+        两条都变大或都变小，就是方向搞错了。
+        """
+        dr = self._drawing()
+        tool = feeds.Tool(10.0, 3, 'carbide')
+        plan = cam.build(dr, 'P', tool, feeds.Machine(), op='rough',
+                         ap_per_pass=1.0, offset='tool_radius', plan_ok=False)
+        xs, ys = [], []
+        for line in plan.text.splitlines():
+            if line.startswith('G1 X'):
+                words = line.split()
+                for w in words:
+                    if w.startswith('X'):
+                        xs.append(float(w[1:]))
+                    elif w.startswith('Y'):
+                        ys.append(float(w[1:]))
+        self.assertIn(-5.0, [round(v, 3) for v in xs], '外轮廓没有往外偏')
+        self.assertIn(65.0, [round(v, 3) for v in xs], '外轮廓没有往外偏')
+        self.assertIn(15.0, [round(v, 3) for v in xs], '型腔没有往里偏')
+        self.assertIn(25.0, [round(v, 3) for v in xs], '型腔没有往里偏')
+
+    def test_offset_record_says_inward(self):
+        dr = self._drawing()
+        plan = cam.build(dr, 'P', feeds.Tool(10.0, 3, 'carbide'),
+                         feeds.Machine(), op='rough', ap_per_pass=1.0,
+                         offset='tool_radius', plan_ok=False)
+        recs = {r['layer']: r for r in plan.meta['offsets']}
+        self.assertFalse(recs['CUT_-3.0']['inward'])
+        self.assertTrue(recs['POCKET_-1.5']['inward'])
+
+
+class TestSharedStock(unittest.TestCase):
+    """生成器和门必须看同一块料。
+
+    各用一块料的具体后果不是"报错"，是"同一条程序两个答案"：
+    solve 里放行了，CLI 再检查一次拒绝了，而两次都对。
+    """
+
+    def test_default_stock_is_one_implementation(self):
+        d = ("0\nSECTION\n2\nENTITIES\n"
+             "0\nLWPOLYLINE\n8\nCUT_-3.0\n90\n4\n70\n1\n"
+             "10\n0\n20\n0\n10\n60\n20\n0\n10\n60\n20\n40\n10\n0\n20\n40\n"
+             "0\nENDSEC\n0\nEOF\n")
+        dr = drawing.read_dxf(d)
+        tool = feeds.Tool(10.0, 3, 'carbide')
+        got = cam.default_stock(dr, tool, 1.5)
+        bx0, by0, bx1, by1 = dr.bounds()
+        pad = tool.diameter_mm + 10.0
+        self.assertAlmostEqual(got[0], bx0 - pad)
+        self.assertAlmostEqual(got[2], bx1 + pad)
+
+    def test_solve_and_build_agree_on_stock(self):
+        d = ("0\nSECTION\n2\nENTITIES\n"
+             "0\nLWPOLYLINE\n8\nCUT_-3.0\n90\n4\n70\n1\n"
+             "10\n0\n20\n0\n10\n60\n20\n0\n10\n60\n20\n40\n10\n0\n20\n40\n"
+             "0\nENDSEC\n0\nEOF\n")
+        dr = drawing.read_dxf(d)
+        tool = feeds.Tool(10.0, 3, 'carbide')
+        plan, atts = cam.solve(dr, 'P', tool, feeds.Machine(), op='rough',
+                               ap_per_pass=1.0)
+        self.assertTrue(atts and atts[-1].verdict.ok,
+                        'solve 自己放行了，但门在别处拒绝：%s'
+                        % (atts[-1].reason if atts else 'no attempts',))
+        built = cam.build(dr, 'P', tool, feeds.Machine(), op='rough',
+                          ap_per_pass=1.0, plan_ok=False)
+        self.assertEqual(tuple(round(v, 6) for v in plan.meta['stock']),
+                         tuple(round(v, 6) for v in built.meta['stock']))
+
+
 class TestFeeds(unittest.TestCase):
 
     def test_gcode_comment_prefix_is_semicolon(self):

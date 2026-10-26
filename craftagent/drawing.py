@@ -90,16 +90,87 @@ def sections(ps):
     return out
 
 
+# ---------------------------------------------------------------- 2D 仿射变换
+# INSERT 展开需要它：块在块表里是"单位形状"，引用处才给出位置/旋转/比例。
+# 只用 3x3 的 2D 仿射（没有透视，DXF 的 INSERT 也没有）。
+def _xform_identity():
+    return (1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+
+
+def _xform_mul(a, b):
+    """a∘b：先 b 后 a。"""
+    a0, a1, a2, a3, a4, a5 = a
+    b0, b1, b2, b3, b4, b5 = b
+    return (a0 * b0 + a1 * b3,
+            a0 * b1 + a1 * b4,
+            a0 * b2 + a1 * b5 + a2,
+            a3 * b0 + a4 * b3,
+            a3 * b1 + a4 * b4,
+            a3 * b2 + a4 * b5 + a5)
+
+
+def _xform_apply(t, pt):
+    a0, a1, a2, a3, a4, a5 = t
+    return (a0 * pt[0] + a1 * pt[1] + a2, a3 * pt[0] + a4 * pt[1] + a5)
+
+
+def _xform_scale(t):
+    """这个变换把长度放大多少倍。圆弧的"弦高容差"要按它折算，
+    否则一个 10 倍放大的块里，容差 0.01 会变成实际的 0.001，
+    采样点数按错误的半径算。取两个基矢长度的几何平均，够用且不必求 SVD。
+    """
+    a0, a1, a2, a3, a4, a5 = t
+    s1 = math.hypot(a0, a1)
+    s2 = math.hypot(a3, a4)
+    return max(1e-9, math.sqrt(abs(s1 * s2)))
+
+
+def _xform_arc(cx, cy, r, a0, a1, t):
+    """圆在仿射下变成椭圆。这里只处理**等比 + 旋转 + 平移**这一类
+    （也就是 DXF 里 41/42 相等的情形），椭圆弧不实现并如实报出来。
+    非等比缩放的块在机械图纸里极少，而"极少的那个"恰好是要靠人看的那个。
+    """
+    a0_, a1_, a2_, a3_, a4_, a5_ = t
+    s1 = math.hypot(a0_, a1_)
+    s2 = math.hypot(a3_, a4_)
+    if abs(s1 - s2) > 1e-9 * max(1.0, s1):
+        return None
+    rot = math.degrees(math.atan2(a1_, a0_))
+    nx, ny = _xform_apply(t, (cx, cy))
+    return nx, ny, r * s1, a0 + rot, a1 + rot
+
+
 # ---------------------------------------------------------------- 实体
 class Contour(object):
     """一条闭合轮廓：若干线段（直线或圆弧），加一个层深。"""
 
-    def __init__(self, layer, depth, pts, source=''):
+    def __init__(self, layer, depth, pts, source='', role=None):
         self.layer = layer
         self.depth = depth
         self.pts = pts              # [(x, y), ...]，首尾相接，不重复首点
         self.source = source
         self.assumed_junctions = 0  # 拼环时按"最小转角"猜过几次
+        # 'outer' 外轮廓 / 'inner' 型腔孔洞 / None 还没判。
+        # 这个区别不是修辞：外轮廓的刀心要往外让一个半径，型腔要往**里**让。
+        # 让错方向的具体后果是过切——件报废，而程序每一条都合法。
+        self.role = role
+
+    def is_inside_of(self, other):
+        """这条轮廓是否整体落在另一条里面。用射线法数一个点就够：
+        轮廓之间不交（真实图纸里外轮廓和型腔不会相交，相交就切不出件）。"""
+        if not self.pts or not other.pts:
+            return False
+        p = self.pts[0]
+        inside = False
+        n = len(other.pts)
+        for k in range(n):
+            x1, y1 = other.pts[k]
+            x2, y2 = other.pts[(k + 1) % n]
+            if (y1 > p[1]) != (y2 > p[1]):
+                xx = x1 + (p[1] - y1) * (x2 - x1) / (y2 - y1)
+                if p[0] < xx:
+                    inside = not inside
+        return inside
 
     def area(self):
         """鞋带公式。符号说明绕向，绝对值是面积。"""
@@ -122,8 +193,9 @@ class Contour(object):
 
     def __repr__(self):
         extra = (' guess=%d' % self.assumed_junctions) if self.assumed_junctions else ''
-        return '<Contour %s z=%.2f %d pts area=%.1f%s>' % (
-            self.layer, self.depth, len(self.pts), self.area(), extra)
+        return '<Contour %s z=%.2f %s %d pts area=%.1f%s>' % (
+            self.layer, self.depth, self.role or '?', len(self.pts),
+            self.area(), extra)
 
 
 # 图层名里带深度的三种常见写法：CUT_-1.5 / CUT-1.5 / CUT_D1.5
@@ -240,24 +312,10 @@ class Drawing(object):
         return d
 
 
-def read_dxf(text, stitch_tol_mm=0.01):
-    """读 ASCII DXF，返回 Drawing。
-
-    只读 ENTITIES 段。BLOCKS 里的东西不展开——块引用（INSERT）被记成
-    unsupported，因为这需要一张块表加变换栈，而这个仓现在不做。
-    不展开就说没展开，而不是假装图纸是空的。
-    """
-    ps = pairs(text)
-    secs = sections(ps)
-    dr = Drawing()
-    ents = secs.get('ENTITIES')
-    if ents is None:
-        raise DrawingError('DXF 里没有 ENTITIES 段')
-
-    # 按实体切开
-    cur_type, cur = None, []
-    items = []
-    for code, val in ents:
+def _split_items(pairs_list):
+    """按组码 0 把一个段切成 [(实体类型, [(code, val), ...]), ...]。"""
+    cur_type, cur, items = None, [], []
+    for code, val in pairs_list:
         if code == 0:
             if cur_type is not None:
                 items.append((cur_type, cur))
@@ -266,48 +324,145 @@ def read_dxf(text, stitch_tol_mm=0.01):
             cur.append((code, val))
     if cur_type is not None:
         items.append((cur_type, cur))
+    return items
+
+
+def _parse_body(body):
+    """把一个实体的组码表读成字段。这是唯一一份实体字段解析。
+
+    块里的实体和顶层实体走**同一段代码**——两份实现迟早会漂移，
+    而漂移的方向一定是"块里的那条悄悄少了某个字段"，然后一条轮廓
+    静默地变了形。第一版就有这个问题：我本来打算给块内实体写一个
+    简化版解析器，写到一半发现那等于给同一件事留两个答案。
+    """
+    layer = ''
+    nums = {}
+    verts = []
+    bulges = []
+    second = [None, None]
+    # LWPOLYLINE 的顶点是 (10,20) 成对**按出现顺序**交替出现的，
+    # 不是"20 配最近一个还缺 y 的 10"。第一版按后者写，
+    # 于是顶点 (30,25) 被读成 (30,None)+(25,None) 的错配：
+    # 三个顶点的型腔报成"少于 3 个点"。报错是对的，原因说的是假的。
+    pending_y = False
+    for code, val in body:
+        if code == 8:
+            layer = val.strip()
+        elif code == 2:
+            nums['name'] = val.strip()
+        elif code == 10:
+            verts.append([_f(val), None])
+            pending_y = True
+        elif code == 20 and pending_y and verts:
+            verts[-1][1] = _f(val)
+            pending_y = False
+        elif code == 11:
+            second[0] = _f(val)
+        elif code == 21:
+            second[1] = _f(val)
+            pending_y = False
+        elif code == 42:
+            bulges.append(_f(val))
+        elif code in (40, 41, 50, 51):
+            nums[code] = _f(val)
+        elif code in (70, 90):
+            nums[code] = int(_f(val))
+    verts = [(x, y) for x, y in verts if y is not None]
+    if second[0] is not None and second[1] is not None:
+        end_pt = (second[0], second[1])
+    else:
+        end_pt = None
+    return layer, nums, verts, bulges, end_pt
+
+
+def _arc_entity(etype, layer, nums, verts, tol):
+    """ARC/CIRCLE -> 点列。返回 (点列, 是否闭合) 或 (None, 原因)。"""
+    if len(verts) < 1 or 40 not in nums:
+        return None, '%s 缺圆心或半径' % etype
+    cx, cy = verts[0]
+    if etype == 'CIRCLE':
+        pts = _arc_points(cx, cy, nums[40], 0.0, 360.0, tol)
+        return pts[:-1], True
+    a0 = nums.get(50, 0.0)
+    a1 = nums.get(51, 360.0)
+    return _arc_points(cx, cy, nums[40], a0, a1, tol), False
+
+
+def _polyline_points(verts, bulges, closed, tol):
+    """LWPOLYLINE 顶点 + bulge -> 点列。"""
+    pts = []
+    n = len(verts)
+    for i in range(n):
+        p0 = verts[i]
+        if i + 1 >= n:
+            if closed:
+                p1 = verts[0]
+            else:
+                pts.append(p0)
+                break
+        else:
+            p1 = verts[i + 1]
+        b = bulges[i] if i < len(bulges) else 0.0
+        seg = _bulge_arc(p0, p1, b, tol)
+        pts.extend(seg[:-1])
+    return pts
+
+
+# 这些实体是标注/文字，不参与切削。跳过是对的，而且要**不吭声**地跳过：
+# 把它们报成"读不懂"会让每张真实图纸都带几十条噪声，噪声里的真问题会被淹掉。
+_SKIP_TYPES = ('TEXT', 'MTEXT', 'DIMENSION', 'LEADER', 'POINT', 'ATTDEF',
+               'ATTRIB', 'VIEWPORT', 'SEQEND', 'VERTEX')
+
+
+def _walk(items, dr, xform=None, depth=0, blocks=None, tol=0.01,
+          clip_box=None, block_name=None):
+    """把一批实体变成轮廓/开链/未采用清单。xform 是当前所在块的变换。
+
+    depth 与 blocks 一起防循环引用：块 A 引用块 B、B 又引用 A 是合法 DXF，
+    照直展开会无限递归，而无限递归的表现是"卡住"——最难看出原因的失败。
+    """
+    xform = xform or _xform_identity()
+    blocks = blocks or {}
+    scale = _xform_scale(xform)
+
+    def place(pt):
+        return _xform_apply(xform, pt)
 
     for etype, body in items:
         dr.entities_seen[etype] = dr.entities_seen.get(etype, 0) + 1
-        layer = ''
-        nums = {}
-        verts = []
-        bulges = []
-        # 10/20 与 11/21 是两组不同的点：LINE 的起点与终点、CIRCLE 的圆心
-        # 与（不用的）第二点。第一版把 11/21 塞进了 nums，于是每条 LINE
-        # 只读到起点，报成"少于两个端点"——报错是对的，原因说的是假的。
-        second = [None, None]
-        # LWPOLYLINE 的顶点是 (10,20) 成对**按出现顺序**交替出现的，
-        # 不是"20 配最近一个还缺 y 的 10"。第一版按后者写，
-        # 于是顶点 (30,25) 被读成 (30,None)+(25,None) 的错配：
-        # 三个顶点的型腔报成"少于 3 个点"。报错是对的，原因说的是假的。
-        # 这里用一个开关：10 开一个新顶点，紧跟着的 20 填它的 y。
-        pending_y = False
-        for code, val in body:
-            if code == 8:
-                layer = val.strip()
-            elif code == 10:
-                verts.append([_f(val), None])
-                pending_y = True
-            elif code == 20 and pending_y and verts:
-                verts[-1][1] = _f(val)
-                pending_y = False
-            elif code == 11:
-                second[0] = _f(val)
-            elif code == 21:
-                second[1] = _f(val)
-                pending_y = False
-            elif code == 42:
-                bulges.append(_f(val))
-            elif code in (40, 41, 50, 51):
-                nums[code] = _f(val)
-            elif code in (70, 90):
-                nums[code] = int(_f(val))
-        verts = [(x, y) for x, y in verts if y is not None]
-        if second[0] is not None and second[1] is not None:
-            end_pt = (second[0], second[1])
-        else:
-            end_pt = None
+        layer, nums, verts, bulges, end_pt = _parse_body(body)
+
+        if etype in _SKIP_TYPES:
+            continue
+
+        if etype == 'INSERT':
+            name = nums.get('name')
+            if not name:
+                dr.unsupported.append((etype, layer, 'INSERT 没有块名'))
+                continue
+            if name not in blocks:
+                dr.unsupported.append((etype, layer,
+                                       'INSERT 引用了块表里没有的块 %r' % name))
+                continue
+            if name in (block_name,) or depth > 8:
+                dr.unsupported.append((etype, layer,
+                                       '块引用形成循环或过深：%s' % name))
+                continue
+            # INSERT 自己的变换：平移 + 旋转 + 等比缩放
+            at = verts[0] if verts else (0.0, 0.0)
+            rot = nums.get(50, 0.0)
+            sx = nums.get(41, 1.0)
+            sy = nums.get(42, sx)
+            ca, sa = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+            local = (ca * sx, -sa * sy, at[0],
+                     sa * sx, ca * sy, at[1])
+            sub_items, base = blocks[name]
+            # 块的基点要减掉：块在自己的坐标系里以 base 为原点
+            bx, by = base
+            pre = (1.0, 0.0, -bx, 0.0, 1.0, -by)
+            _walk(sub_items, dr, _xform_mul(xform, _xform_mul(local, pre)),
+                  depth + 1, blocks, tol, clip_box, name)
+            continue
 
         if etype == 'LINE':
             pts = []
@@ -318,51 +473,113 @@ def read_dxf(text, stitch_tol_mm=0.01):
             if len(pts) < 2:
                 dr.unsupported.append((etype, layer, 'LINE 少于两个端点'))
                 continue
-            _add_open(dr, layer, pts, etype)
-        elif etype == 'ARC':
-            if len(verts) < 1 or 40 not in nums:
-                dr.unsupported.append((etype, layer, 'ARC 缺圆心或半径'))
+            _add_open(dr, layer, [place(p) for p in pts], etype)
+            continue
+
+        if etype in ('ARC', 'CIRCLE'):
+            pts, closed = _arc_entity(etype, layer, nums, verts, tol / scale)
+            if pts is None:
+                dr.unsupported.append((etype, layer, closed))
                 continue
-            (cx, cy) = verts[0]
-            a0 = nums.get(50, 0.0)
-            a1 = nums.get(51, 360.0)
-            pts = _arc_points(cx, cy, nums[40], a0, a1)
-            _add_open(dr, layer, pts, etype)
-        elif etype == 'CIRCLE':
-            if len(verts) < 1 or 40 not in nums:
-                dr.unsupported.append((etype, layer, 'CIRCLE 缺圆心或半径'))
-                continue
-            (cx, cy) = verts[0]
-            pts = _arc_points(cx, cy, nums[40], 0.0, 360.0)
-            pts = pts[:-1]          # 闭合轮廓不重复首点
-            _add_closed(dr, layer, pts, etype)
-        elif etype == 'LWPOLYLINE':
+            if xform == _xform_identity():
+                moved = pts
+            else:
+                got = _xform_arc(verts[0][0], verts[0][1], nums[40],
+                                 nums.get(50, 0.0) if etype == 'ARC' else 0.0,
+                                 nums.get(51, 360.0) if etype == 'ARC' else 360.0,
+                                 xform)
+                if got is None:
+                    dr.unsupported.append((etype, layer,
+                                           '非等比缩放的块里的圆弧（会变椭圆），未实现'))
+                    continue
+                cx, cy, r, a0, a1 = got
+                moved = _arc_points(cx, cy, r, a0, a1, tol)
+                if closed:
+                    moved = moved[:-1]
+            if closed:
+                _add_closed(dr, layer, moved, etype)
+            else:
+                _add_open(dr, layer, moved, etype)
+            continue
+
+        if etype == 'LWPOLYLINE':
             if len(verts) < 2:
                 dr.unsupported.append((etype, layer, 'LWPOLYLINE 少于两个顶点'))
                 continue
             closed = bool(nums.get(70, 0) & 1)
-            pts = []
-            n = len(verts)
-            for i in range(n):
-                p0 = verts[i]
-                p1 = verts[(i + 1) % n] if closed else verts[(i + 1) % n if i + 1 < n else i]
-                if i + 1 >= n and not closed:
-                    pts.append(p0)
-                    break
-                b = bulges[i] if i < len(bulges) else 0.0
-                seg = _bulge_arc(p0, p1, b)
-                pts.extend(seg[:-1])
+            pts = _polyline_points(verts, bulges, closed, tol / scale)
+            placed = [place(p) for p in pts if p is not None]
             if closed:
-                _add_closed(dr, layer, pts, etype)
+                _add_closed(dr, layer, placed, etype)
             else:
-                _add_open(dr, layer, pts, etype)
-        elif etype in ('INSERT', 'SPLINE', 'ELLIPSE', '3DFACE', 'HATCH', 'TEXT', 'MTEXT',
-                       'DIMENSION', 'LEADER', 'POINT', 'SOLID'):
-            if etype in ('TEXT', 'MTEXT', 'DIMENSION', 'LEADER', 'POINT'):
-                continue        # 标注与文字不参与切削，跳过是对的
+                _add_open(dr, layer, placed, etype)
+            continue
+
+        if etype in ('POLYLINE',):
+            # 老式 POLYLINE 的顶点是后面跟着的一串 VERTEX 实体，
+            # 这里不拼（需要把它们从流里摘出来）。说清楚，不假装。
+            dr.unsupported.append((etype, layer,
+                                   '老式 POLYLINE（VERTEX 子实体流），未实现'))
+            continue
+
+        if etype == 'SOLID' or etype == '3DFACE':
             dr.unsupported.append((etype, layer, '这个实体类型没有实现'))
-        else:
-            dr.unsupported.append((etype, layer, '不认识的实体类型'))
+            continue
+
+        dr.unsupported.append((etype, layer, '不认识的实体类型'))
+
+
+def read_dxf(text, stitch_tol_mm=0.01):
+    """读 ASCII DXF，返回 Drawing。
+
+    ENTITIES 段全部展开；BLOCKS 段只做成一张表，供 INSERT 引用。
+    """
+    ps = pairs(text)
+    secs = sections(ps)
+    dr = Drawing()
+    ents = secs.get('ENTITIES')
+    if ents is None:
+        raise DrawingError('DXF 里没有 ENTITIES 段')
+
+    # ---- 块表：BLOCKS 段里每个 BLOCK ... ENDBLK 是一块
+    blocks = {}
+    for etype, body in _split_items(secs.get('BLOCKS', [])):
+        if etype != 'BLOCK':
+            continue
+        layer, nums, verts, bulges, end_pt = _parse_body(body)
+        name = nums.get('name')
+        if not name:
+            continue
+        base = verts[0] if verts else (0.0, 0.0)
+        blocks[name] = ([], base)
+    # 第二遍：把实体挂到各自的块下面。BLOCK/ENDBLK 是分隔符，不是内容。
+    cur = None
+    for etype, body in _split_items(secs.get('BLOCKS', [])):
+        if etype == 'BLOCK':
+            layer, nums, verts, bulges, end_pt = _parse_body(body)
+            cur = nums.get('name')
+            continue
+        if etype == 'ENDBLK':
+            cur = None
+            continue
+        if cur is not None and cur in blocks:
+            blocks[cur][0].append((etype, body))
+
+    _walk(_split_items(ents), dr, None, 0, blocks, stitch_tol_mm)
+
+    # 判角色：任何落在另一条轮廓里面的，是型腔/孔，刀心往里偏；
+    # 都不在别人里面的，是外轮廓，刀心往外偏。
+    # 不做这一步，偏置的方向就只好靠一个全局假设——而假设一定会有一半是错的。
+    contours = dr.contours
+    for c in contours:
+        c.role = 'outer'
+    for c in contours:
+        for other in contours:
+            if other is c:
+                continue
+            if abs(other.area()) > abs(c.area()) and c.is_inside_of(other):
+                c.role = 'inner'
+                break
 
     if dr.open_edges:
         contours, rep = stitch(dr.open_edges, stitch_tol_mm)

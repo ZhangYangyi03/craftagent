@@ -1,10 +1,11 @@
 {
   "drawing": {
-    "contours": 4,
+    "contours": 6,
     "entities": {
-      "LWPOLYLINE": 3,
+      "LWPOLYLINE": 5,
       "CIRCLE": 1,
-      "LINE": 5
+      "LINE": 5,
+      "INSERT": 2
     },
     "unsupported": [],
     "unknown_depth": [
@@ -55,6 +56,23 @@
       ],
       "junctions": [],
       "self_intersect_unchecked": true
+    }
+  },
+  "tool_offset": {
+    "none": {
+      "offset_mm": 0.0,
+      "kind": "none",
+      "clamped_vertices": 0
+    },
+    "tool_radius": {
+      "offset_mm": 5.0,
+      "kind": "point_normal_approx",
+      "clamped_vertices": 0
+    },
+    "tool_radius_minus_allow": {
+      "offset_mm": 4.7,
+      "kind": "point_normal_approx",
+      "clamped_vertices": 0
     }
   },
   "one_shot": {
@@ -128,7 +146,7 @@
     "unknown_depth_layers": [
       "NOTES"
     ],
-    "contours_found": 4,
+    "contours_found": 6,
     "stitched_cycles": 1,
     "stitched_layers": {
       "CUT_-3.0": {
