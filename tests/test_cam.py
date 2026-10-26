@@ -583,6 +583,149 @@ class TestSharedStock(unittest.TestCase):
                          tuple(round(v, 6) for v in built.meta['stock']))
 
 
+class TestPocketClearing(unittest.TestCase):
+    """型腔清腔：只沿边界走一圈会在中间留一根柱子。
+
+    那根柱子的麻烦在于它**不报错**：每条指令合法、门放行，
+    因为门只看撞不撞夹具、超不超限，它不知道"这块料应该被掏空"。
+    """
+
+    def test_pocket_gets_inner_rings(self):
+        rings = cam.pocket_clear_paths([(0, 0), (40, 0), (40, 40), (0, 40)], 6.0)
+        self.assertGreaterEqual(len(rings), 3, '40x40 的型腔用 D6 刀至少要 3 圈')
+        # 由内向外：第一圈的跨度必须比最后一圈小
+        def span(rg):
+            xs = [q[0] for q in rg]
+            return max(xs) - min(xs)
+        self.assertLess(span(rings[0]), span(rings[-1]))
+
+    def test_every_ring_stays_inside_the_pocket(self):
+        """清腔的每一圈都必须在型腔里面。
+
+        偏置是近似的，近似的东西必须被检查：自交跑出去的那一小段
+        会切进型腔壁，而那是不可修的废。
+        """
+        pocket = [(10, 10), (70, 10), (70, 50), (10, 50)]
+        for rg in cam.pocket_clear_paths(pocket, 10.0):
+            for q in rg:
+                self.assertTrue(cam._point_in_poly(q, pocket),
+                                '清腔环跑出型腔了：%r' % (q,))
+
+    def test_ring_never_gets_within_tool_radius_of_the_wall(self):
+        """刀心离型腔壁必须至少一个刀半径，否则就是过切。"""
+        pocket = [(10, 10), (70, 10), (70, 50), (10, 50)]
+        r = 5.0
+        for rg in cam.pocket_clear_paths(pocket, 2 * r):
+            for q in rg:
+                d = cam._poly_dist_to_segments(q, pocket)
+                self.assertGreaterEqual(d, r - 1e-6,
+                                        '刀心离壁只有 %.4f，小于半径 %.1f' % (d, r))
+
+    def test_narrow_pocket_terminates_and_clears(self):
+        """窄条型腔不能因为"短边小"就判成没料。
+
+        第一版拿包围盒短边当停止判据，20x15 的型腔报 0 圈——
+        而那条窄槽其实还要清。
+        """
+        rings = cam.pocket_clear_paths([(10, 10), (30, 10), (30, 25), (10, 25)], 10.0)
+        self.assertGreaterEqual(len(rings), 1, '20x15 用 D10 至少还要清一圈')
+
+    def test_clearing_terminates(self):
+        """必须收敛。第一版这里跑出 400 圈完全重合的轨迹——
+
+        而每一圈都"合法"，只是刀在同一个地方空转四百次。
+        """
+        rings = cam.pocket_clear_paths([(0, 0), (200, 0), (200, 200), (0, 200)], 10.0)
+        self.assertLess(len(rings), 60, '清腔圈数异常：%d' % len(rings))
+
+    def test_build_clears_inner_contours(self):
+        d = ("0\nSECTION\n2\nENTITIES\n"
+             "0\nLWPOLYLINE\n8\nCUT_-3.0\n90\n4\n70\n1\n"
+             "10\n0\n20\n0\n10\n80\n20\n0\n10\n80\n20\n50\n10\n0\n20\n50\n"
+             "0\nLWPOLYLINE\n8\nPOCKET_-1.5\n90\n4\n70\n1\n"
+             "10\n15\n20\n15\n10\n65\n20\n15\n10\n65\n20\n40\n10\n15\n20\n40\n"
+             "0\nENDSEC\n0\nEOF\n")
+        dr = drawing.read_dxf(d)
+        plan = cam.build(dr, 'P', feeds.Tool(10.0, 3, 'carbide'), feeds.Machine(),
+                         op='rough', ap_per_pass=1.5, offset='tool_radius',
+                         ramp_deg=0, plan_ok=False)
+        pk = plan.meta['pockets']
+        self.assertEqual(len(pk), 1)
+        self.assertGreaterEqual(pk[0]['clear_rings'], 1,
+                                '型腔没被清腔：%r' % (pk[0],))
+
+    def test_outer_contour_is_not_treated_as_a_pocket(self):
+        """外轮廓没有"里面"要去，不能给它加环。"""
+        d = ("0\nSECTION\n2\nENTITIES\n"
+             "0\nLWPOLYLINE\n8\nCUT_-3.0\n90\n4\n70\n1\n"
+             "10\n0\n20\n0\n10\n60\n20\n0\n10\n60\n20\n40\n10\n0\n20\n40\n"
+             "0\nENDSEC\n0\nEOF\n")
+        dr = drawing.read_dxf(d)
+        plan = cam.build(dr, 'P', feeds.Tool(10.0, 3, 'carbide'), feeds.Machine(),
+                         op='rough', ap_per_pass=1.5, offset='tool_radius',
+                         plan_ok=False)
+        self.assertEqual(plan.meta['pockets'], [])
+
+
+class TestEllipticalArcs(unittest.TestCase):
+    """非等比缩放的块里，圆变成真椭圆。
+
+    第一版在这里报"未实现"，理由是"非等比缩放的块在机械图纸里极少"。
+    那句话没错，错的是它的用法：它让一个能算出来的东西变成了读不懂，
+    于是整条轮廓从图纸上消失，报告里只说一句"这个实体未实现"。
+    """
+
+    def _ellipse_dxf(self):
+        b = _nl((0, "SECTION"), (2, "BLOCKS"))
+        b += _nl((0, "BLOCK"), (8, "0"), (2, "CIRC"), (70, 0), (10, 0), (20, 0))
+        b += _nl((0, "CIRCLE"), (8, "HOLE_-3.0"), (10, 0), (20, 0), (40, 5))
+        b += _nl((0, "ENDBLK"), (0, "ENDSEC"))
+        e = _nl((0, "SECTION"), (2, "ENTITIES"))
+        e += _nl((0, "INSERT"), (8, "HOLE_-3.0"), (2, "CIRC"),
+                 (10, 0), (20, 0), (41, 2), (42, 1))
+        e += _nl((0, "ENDSEC"), (0, "EOF"))
+        return b + e
+
+    def test_nonuniform_scaled_circle_becomes_an_ellipse(self):
+        dr = drawing.read_dxf(self._ellipse_dxf())
+        self.assertEqual(dr.unsupported, [], '椭圆被报成未实现了：%s'
+                         % (dr.unsupported,))
+        self.assertEqual(len(dr.contours), 1)
+        xs = [q[0] for q in dr.contours[0].pts]
+        ys = [q[1] for q in dr.contours[0].pts]
+        self.assertAlmostEqual(max(xs) - min(xs), 20.0, delta=0.2)   # 2 * 5 * 2
+        self.assertAlmostEqual(max(ys) - min(ys), 10.0, delta=0.2)   # 2 * 5 * 1
+
+    def test_ellipse_area_matches_pi_ab(self):
+        """面积必须等于 pi*a*b，而不是 pi*r^2。
+
+        第一版把 INSERT 的 42 组码当成了 LWPOLYLINE 的 bulge，
+        于是 y 方向缩放被吃掉，椭圆**静默地没被压扁**：
+        面积从 157 变成 314，没有一行报错。数值错比报错难查得多。
+        """
+        import math as _m
+        dr = drawing.read_dxf(self._ellipse_dxf())
+        self.assertAlmostEqual(abs(dr.contours[0].area()), _m.pi * 10 * 5,
+                               delta=3.0)
+
+    def test_bulge_and_insert_scale_do_not_collide(self):
+        """组码 42 在 LWPOLYLINE 里是 bulge，在 INSERT 里是 y 缩放。
+
+        同一个数字两个意思，按实体类型分派。混了就是上面那个静默的错。
+        """
+        # LWPOLYLINE 的 42 = 半圆凸度：两点之间画一个半圆
+        d = ("0\nSECTION\n2\nENTITIES\n"
+             "0\nLWPOLYLINE\n8\nCUT_-1.0\n90\n2\n70\n1\n"
+             "10\n0\n20\n0\n42\n1\n10\n20\n20\n0\n"
+             "0\nENDSEC\n0\nEOF\n")
+        dr = drawing.read_dxf(d)
+        self.assertEqual(len(dr.contours), 1)
+        self.assertGreater(len(dr.contours[0].pts), 4,
+                           'bulge 没被当成弧展开：只有直边')
+        ys = [q[1] for q in dr.contours[0].pts]
+        self.assertGreater(max(abs(v) for v in ys), 5.0, '半圆没鼓起来')
+
+
 class TestFeeds(unittest.TestCase):
 
     def test_gcode_comment_prefix_is_semicolon(self):

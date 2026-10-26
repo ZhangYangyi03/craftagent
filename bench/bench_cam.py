@@ -140,9 +140,33 @@ def run(out=None, verbose=True):
                            'kind': rec['kind'],
                            'clamped_vertices': len(rec['miter_clamped_vertices'])}
 
+    # ---- 6. 清腔：只走一圈边界会在中间留柱子，而它不报错
+    pk = []
+    for c in dr.contours:
+        if c.role != 'inner':
+            continue
+        rings = cam_mod.pocket_clear_paths(c.pts, tool10.diameter_mm)
+        worst = min((cam_mod._poly_dist_to_segments(q, c.pts)
+                     for rg in rings for q in rg), default=0.0)
+        # 0 圈有两种完全不同的原因，必须分开说：
+        #   孔太小刀进不去（该钻孔/小刀，不是清腔）
+        #   清腔算法没收敛（那是 bug）
+        # 只写"0 圈"把这两件事混成一句，而它们的处理方式完全不同。
+        ir = cam_mod._max_inner_radius(c.pts) if len(c.pts) >= 3 else 0.0
+        r = tool10.diameter_mm / 2.0
+        why = ''
+        if not rings:
+            why = ('刀进不去：最大内切半径 %.2f < 刀半径 %.2f（这种孔该钻孔或换小刀）'
+                   % (ir, r)) if ir <= r else '清腔未收敛（这是 bug）'
+        pk.append({'layer': c.layer, 'rings': len(rings),
+                   'inner_radius_mm': round(ir, 3),
+                   'why_no_rings': why,
+                   'min_wall_dist_mm': round(worst, 3)})
+    # 椭圆：非等比缩放的块里圆要变成真椭圆，不能变成"未实现"
     res = {
         'drawing': dr2.summary(),
         'tool_offset': off_check,
+        'pocket_clearing': pk,
         'one_shot': {'total': len(combos), 'admitted': one_shot_ok,
                      'admitted_rate': round(one_shot_ok / max(1, len(combos)), 4),
                      'refused': one_shot_refused},
@@ -165,6 +189,12 @@ def run(out=None, verbose=True):
               % (15, len(gen_problems)))
         print("读不懂的说明了：开链 %s；无深度 %s"
               % (said['open_chain_reported'], said['unknown_depth_reported']))
+        print("清腔：%s"
+              % ("；".join("%s=%d圈%s"
+                          % (x['layer'], x['rings'],
+                             ('（' + x['why_no_rings'] + '）') if x['why_no_rings'] else
+                             ' 最近壁 %.2fmm' % x['min_wall_dist_mm'])
+                          for x in pk) or "图纸里没有型腔"))
         print("刀心偏置：%s"
               % "；".join("%s=%.2fmm" % (k, v['offset_mm'])
                           for k, v in off_check.items()))

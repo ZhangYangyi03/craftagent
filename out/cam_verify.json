@@ -75,6 +75,36 @@
       "clamped_vertices": 0
     }
   },
+  "pocket_clearing": [
+    {
+      "layer": "POCKET_-1.5",
+      "rings": 1,
+      "inner_radius_mm": 7.5,
+      "why_no_rings": "",
+      "min_wall_dist_mm": 7.0
+    },
+    {
+      "layer": "HOLE_-6.0",
+      "rings": 0,
+      "inner_radius_mm": 3.985,
+      "why_no_rings": "刀进不去：最大内切半径 3.99 < 刀半径 5.00（这种孔该钻孔或换小刀）",
+      "min_wall_dist_mm": 0.0
+    },
+    {
+      "layer": "HOLE_-4.0",
+      "rings": 0,
+      "inner_radius_mm": 3.0,
+      "why_no_rings": "刀进不去：最大内切半径 3.00 < 刀半径 5.00（这种孔该钻孔或换小刀）",
+      "min_wall_dist_mm": 0.0
+    },
+    {
+      "layer": "HOLE_-4.0",
+      "rings": 0,
+      "inner_radius_mm": 3.0,
+      "why_no_rings": "刀进不去：最大内切半径 3.00 < 刀半径 5.00（这种孔该钻孔或换小刀）",
+      "min_wall_dist_mm": 0.0
+    }
+  ],
   "one_shot": {
     "total": 45,
     "admitted": 38,

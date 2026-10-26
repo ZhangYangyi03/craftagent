@@ -158,6 +158,127 @@ def _ramp_in(pts, start_idx, drop, ramp_deg, feed):
         out.append((x, y, -abs(drop), feed * 0.3))
     return out
 
+
+def _point_in_poly(pt, poly):
+    inside = False
+    n = len(poly)
+    x, y = pt
+    for k in range(n):
+        x1, y1 = poly[k]
+        x2, y2 = poly[(k + 1) % n]
+        if (y1 > y) != (y2 > y):
+            xx = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            if x < xx:
+                inside = not inside
+    return inside
+
+
+def _poly_span(poly):
+    xs = [q[0] for q in poly]
+    ys = [q[1] for q in poly]
+    return (max(xs) - min(xs), max(ys) - min(ys))
+
+
+def _max_inner_radius(poly, samples=17):
+    """这个区域里最大能塞进多大的圆。
+
+    清腔的停止判据必须是它，不是包围盒短边：
+    一个 60x15 的窄条型腔短边只有 15，但中心处内切半径能到 7.5，
+    用短边判会直接认为"没料了"，而那条窄槽其实还得清。
+    第一版就是拿短边判的，20x15 的型腔报 0 圈。
+    """
+    xs = [q[0] for q in poly]
+    ys = [q[1] for q in poly]
+    cx, cy = (min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0
+    cands = [tuple(q) for q in poly] + [(cx, cy)]
+    # 再在包围盒里撒一层网格，避免"最大内切圆不在顶点也不在中心"的形状漏掉
+    for i in range(samples):
+        for j in range(samples):
+            x = min(xs) + (max(xs) - min(xs)) * (i + 0.5) / samples
+            y = min(ys) + (max(ys) - min(ys)) * (j + 0.5) / samples
+            cands.append((x, y))
+    best = 0.0
+    for q in cands:
+        if not _point_in_poly(q, poly):
+            continue
+        d = _poly_dist_to_segments(q, poly)
+        if d > best:
+            best = d
+    return best
+
+
+def _poly_dist_to_segments(pt, poly):
+    """点到多边形边界的最短距离。清腔的间距就是靠它判的。"""
+    best = float('inf')
+    n = len(poly)
+    x, y = pt
+    for k in range(n):
+        x1, y1 = poly[k]
+        x2, y2 = poly[(k + 1) % n]
+        dx, dy = x2 - x1, y2 - y1
+        L2 = dx * dx + dy * dy
+        if L2 <= 1e-18:
+            d = math.hypot(x - x1, y - y1)
+        else:
+            t = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / L2))
+            d = math.hypot(x - (x1 + t * dx), y - (y1 + t * dy))
+        if d < best:
+            best = d
+    return best
+
+
+def pocket_clear_paths(pts, tool_dia, stepover=None, allow=0.0):
+    """型腔清腔：走一圈边界之后，把中间那坨料也去掉。
+
+    只沿边界走一圈的问题很具体：型腔中间留着一根柱子，件是废的，
+    而程序里每一行都合法、门也放行——因为它只看刀有没有撞夹具、
+    有没有超限，它不知道"这块料应该被掏空"。
+
+    做法（水平等距环）：
+      1. 边界先往里让一个刀半径（刀心不能出边界）；
+      2. 再一层层往里让 stepover，直到剩下的洞小到没有料；
+      3. 每一圈都要**验一遍它真的在里面**——逐点法向偏移在凹处会自交，
+         自交出去的那一小段会切进型腔壁，而那是不可修的废。
+
+    第 3 步不是保险，是必须的：这个仓的偏置本来就是近似（见
+    offset_contour 的说明），近似的东西必须被检查，不能靠"应该没问题"。
+    """
+    r = tool_dia / 2.0
+    step = stepover if stepover else 0.7 * tool_dia
+    if step <= 0:
+        raise CamError('清腔行距必须为正')
+    rings = []
+    region = list(pts)
+    guard = 0
+    while guard < 400:
+        guard += 1
+        # 收敛判据必须是"再往里让还剩多少地方"。
+        # 只判"环上有几个点"不够：两点退化之后 offset_contour 会把它
+        # 补成一个 4 点小方块，于是这个循环永远退不出来——
+        # 第一版就是这样，跑出 400 圈完全重合的轨迹，而每一圈都"合法"。
+        # 停止判据：这一圈之后再往里让，刀心已经放不下了。
+        # 用"最大内切半径 <= 刀半径 + 留量"来判，因为那正是
+        # "刀心还能不能进到更里面"的定义。
+        base_inner = _max_inner_radius(region)
+        if base_inner <= r + allow + 1e-9:
+            break
+        ring = offset_contour(region, -step)
+        if len(ring) < 3:
+            break
+        # 自交/翻出去的一圈不能用：宁可少清一层，也不要过切
+        bad = sum(1 for q in ring if not _point_in_poly(q, pts))
+        if bad:
+            break
+        if _max_inner_radius(ring) >= base_inner - 1e-6:
+            break           # 没往里走，说明已经到底
+        rings.append(ring)
+        region = ring
+        # 这一圈离**原始型腔壁**还剩多少：不够一个半径说明中心料已去掉
+        inner = min(_poly_dist_to_segments(q, pts) for q in ring)
+        if inner <= r + 1e-9:
+            break
+    return list(reversed(rings))  # 由内向外走，最后贴壁
+
 def default_stock(dr, tool=None, ap_per_pass=1.0):
     """推一块够大的毛坯：轮廓包围盒 + 边距，厚度够分刀。
 
@@ -179,7 +300,8 @@ def default_stock(dr, tool=None, ap_per_pass=1.0):
 
 def build(dr, material='P', tool=None, machine=None, stock=None,
           op='rough', ap_per_pass=1.0, safe_z=None, conservative=1.0,
-          plan_ok=True, ramp_deg=0.0, offset='none', finish_allow=0.0):
+          plan_ok=True, ramp_deg=0.0, offset='none', finish_allow=0.0,
+          pocket_stepover=None, clear_pockets=True):
     """把一张读出来的图纸变成一条程序。
 
     stock: (x0, y0, x1, y1, top_z, thickness)。给 None 时按轮廓包围盒 + 边距推。
@@ -193,6 +315,11 @@ def build(dr, material='P', tool=None, machine=None, stock=None,
         必须显式选的参数，而不是一个默认值。
     finish_allow: 留量。offset='tool_radius_minus_allow' 时刀心只离开
         (半径 - 留量)，于是留下 finish_allow 的料给精铣。
+    clear_pockets: 型腔是否清腔（把中间那坨料也去掉）。
+        只沿边界走一圈的话，型腔中间留着一根柱子：件是废的，
+        而每一行指令都合法、门也放行——门只看撞不撞夹具、
+        超不超限，它不知道"这块料应该被掏空"。
+    pocket_stepover: 清腔行距，默认 0.7 倍刀径。
     """
     if not dr.contours:
         raise CamError('图纸里没有可切的闭合轮廓，没有东西可生成')
@@ -217,6 +344,7 @@ def build(dr, material='P', tool=None, machine=None, stock=None,
     choices = []
     head = []
     offsets_applied = []
+    pockets_cleared = []
 
     for c in contours:
         target = c.depth
@@ -249,6 +377,20 @@ def build(dr, material='P', tool=None, machine=None, stock=None,
                                 'dist': off, 'inward': inward < 0,
                                 'kind': 'point_normal_approx' if off else 'none',
                                 'miter_clamped_vertices': clamped_pts})
+        # 型腔要清腔：边界那一圈之外，中间还要一圈圈往里走，否则留柱子。
+        # 清腔的每一圈都必须已经让到"刀心不出边界"的位置，所以
+        # pocket_clear_paths 自己会再往里让一个刀半径——这里传原始轮廓，
+        # 不传已经偏过的那条（传偏过的会让出两倍半径，型腔被切大一圈）。
+        extra_rings = []
+        if clear_pockets and c.role == 'inner' and len(c.pts) >= 3:
+            try:
+                extra_rings = pocket_clear_paths(
+                    c.pts, tool.diameter_mm, pocket_stepover, finish_allow)
+            except CamError:
+                extra_rings = []
+        pocket_meta = {'layer': c.layer, 'clear_rings': len(extra_rings)}
+        if c.role == 'inner':
+            pockets_cleared.append(pocket_meta)
         passes = [min(ap_per_pass, abs(target))]
         dep = passes[0]
         while dep < abs(target) - 1e-9:
@@ -281,28 +423,37 @@ def build(dr, material='P', tool=None, machine=None, stock=None,
                 choices.append(ch)
                 if path:
                     L.append('G0 X%s Y%s' % (_fmt(path[0][0]), _fmt(path[0][1])))
-            # 下刀：直插或斜插。斜插要沿轮廓走一段，所以它吃掉轮廓开头的一截，
-            # 那一截不能重复走——从斜插结束的位置接着走。
-            n = len(path)
-            start_idx = 0
-            if ramp_deg > 0 and n >= 3:
-                ramp = _ramp_in(path, 0, dp, ramp_deg, ch.feed_mm_min)
-                # _ramp_in 给的 z 是相对本刀的起点（0 -> -dp），
-                # 所以要加上 prev_z 才是机床的绝对坐标。
-                for rx, ry, rz, rf in ramp:
-                    L.append('G1 X%s Y%s Z%s F%.0f'
-                             % (_fmt(rx), _fmt(ry), _fmt(prev_z + rz), round(rf)))
-                # 找到斜插走到的点，从它的下一点继续
-                endpt = (ramp[-1][0], ramp[-1][1]) if ramp else path[0]
-                start_idx = min(range(n), key=lambda k: math.dist(path[k], endpt))
-            else:
-                L.append('G1 Z%s F%.0f'
-                         % (_fmt(z_here), round(ch.feed_mm_min * 0.3)))
-            for k in range(start_idx + 1, start_idx + n + 1):
-                x, y = path[k % n]
-                L.append('G1 X%s Y%s F%.0f'
-                         % (_fmt(x), _fmt(y), round(ch.feed_mm_min)))
-            L.append('G0 Z%s' % _fmt(safe_z))
+            # 同一个 Z 层上要走的环：清腔的先由内向外一圈圈走，
+            # 最后才是贴壁那一圈（也就是 path）。
+            # 顺序不能反：先贴壁的话，后面几圈会把已经切开的壁再刮一次，
+            # 而且中间那坨料还挂在壁上，容易把刀挤偏。
+            for ring in list(extra_rings) + [path]:
+                if len(ring) < 2:
+                    continue
+                L.append('G0 X%s Y%s' % (_fmt(ring[0][0]), _fmt(ring[0][1])))
+                # 下刀：直插或斜插。斜插会吃掉环开头的一截，
+                # 那一截不能重复走——从斜插结束的位置接着走。
+                n = len(ring)
+                start_idx = 0
+                if ramp_deg > 0 and n >= 3:
+                    ramp = _ramp_in(ring, 0, dp, ramp_deg, ch.feed_mm_min)
+                    # _ramp_in 给的 z 是相对本刀起点（0 -> -dp），
+                    # 加上 prev_z 才是机床的绝对坐标。
+                    for rx, ry, rz, rf in ramp:
+                        L.append('G1 X%s Y%s Z%s F%.0f'
+                                 % (_fmt(rx), _fmt(ry), _fmt(prev_z + rz), round(rf)))
+                    endpt = (ramp[-1][0], ramp[-1][1]) if ramp else ring[0]
+                    start_idx = min(range(n), key=lambda k: math.dist(ring[k], endpt))
+                else:
+                    L.append('G1 Z%s F%.0f'
+                             % (_fmt(z_here), round(ch.feed_mm_min * 0.3)))
+                for k in range(start_idx + 1, start_idx + n + 1):
+                    x, y = ring[k % n]
+                    L.append('G1 X%s Y%s F%.0f'
+                             % (_fmt(x), _fmt(y), round(ch.feed_mm_min)))
+                # 一圈走完抬到安全高度，再去下一个环的起点。
+                # 不抬起来的后果是"贴着件横穿过去"，那正是撞夹具的那一刀。
+                L.append('G0 Z%s' % _fmt(safe_z))
     L.append('M5')
     text = '\n'.join(head + L) + '\n'
     plan = Plan(text, choices, {'contours': len(contours), 'stock': stock,
@@ -311,6 +462,9 @@ def build(dr, material='P', tool=None, machine=None, stock=None,
                                 'ap_per_pass': ap_per_pass,
                                 'ramp_deg': ramp_deg, 'offset': offset,
                                 'finish_allow': finish_allow,
+                                'pocket_stepover': pocket_stepover,
+                                'clear_pockets': clear_pockets,
+                                'pockets': pockets_cleared,
                                 'offsets': offsets_applied})
     if plan_ok:
         self_check(plan, dr, stock)

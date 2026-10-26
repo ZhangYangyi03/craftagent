@@ -125,19 +125,43 @@ def _xform_scale(t):
     return max(1e-9, math.sqrt(abs(s1 * s2)))
 
 
-def _xform_arc(cx, cy, r, a0, a1, t):
-    """圆在仿射下变成椭圆。这里只处理**等比 + 旋转 + 平移**这一类
-    （也就是 DXF 里 41/42 相等的情形），椭圆弧不实现并如实报出来。
-    非等比缩放的块在机械图纸里极少，而"极少的那个"恰好是要靠人看的那个。
+def _xform_arc(cx, cy, r, a0, a1, t, tol=0.01):
+    """圆经过任意仿射变换 -> 点列。
+
+    第一版这里只接受"等比缩放"的变换，非等比一律报未实现。理由写的是
+    "非等比缩放的块在机械图纸里极少"——而这句话本身没错，错的是它的用法：
+    它让一个**能算出来的东西**变成了"读不懂"，于是整条轮廓从图纸上消失，
+    而报告里只说了一句"这个实体未实现"。
+
+    正确做法比那简单得多，而且不需要求椭圆的长短轴：圆的参数角 θ 是
+    (cos θ, sin θ)，把它当单位圆上的点直接乘变换矩阵，就是椭圆上的点。
+    圆弧的 θ 从 a0 扫到 a1（DXF 的角度是度的，逆时针为正）。
+    采样密度按"变换后最大的那个半轴"折算容差。
     """
     a0_, a1_, a2_, a3_, a4_, a5_ = t
     s1 = math.hypot(a0_, a1_)
     s2 = math.hypot(a3_, a4_)
-    if abs(s1 - s2) > 1e-9 * max(1.0, s1):
-        return None
-    rot = math.degrees(math.atan2(a1_, a0_))
-    nx, ny = _xform_apply(t, (cx, cy))
-    return nx, ny, r * s1, a0 + rot, a1 + rot
+    rmax = r * max(s1, s2)
+    if rmax <= 1e-12:
+        return [(a2_, a5_)]
+    sweep = a1 - a0
+    while sweep <= 0:
+        sweep += 360.0
+    if sweep > 360.0:
+        sweep = 360.0
+    # 弦高容差 -> 角步长：sagitta = r(1-cos(dθ/2)) <= tol
+    if rmax <= tol:
+        n = 4
+    else:
+        step = 2.0 * math.degrees(math.acos(max(-1.0, 1.0 - tol / rmax)))
+        n = max(4, min(2000, int(abs(sweep) / max(step, 1e-6)) + 2))
+    out = []
+    closed = abs(sweep - 360.0) < 1e-9
+    for i in range(n + 1 if closed else n):
+        th = math.radians(a0 + sweep * (float(i) / n))
+        ux, uy = r * math.cos(th), r * math.sin(th)
+        out.append((a0_ * ux + a1_ * uy + a2_, a3_ * ux + a4_ * uy + a5_))
+    return out
 
 
 # ---------------------------------------------------------------- 实体
@@ -327,13 +351,20 @@ def _split_items(pairs_list):
     return items
 
 
-def _parse_body(body):
+def _parse_body(body, etype=None):
     """把一个实体的组码表读成字段。这是唯一一份实体字段解析。
 
     块里的实体和顶层实体走**同一段代码**——两份实现迟早会漂移，
     而漂移的方向一定是"块里的那条悄悄少了某个字段"，然后一条轮廓
     静默地变了形。第一版就有这个问题：我本来打算给块内实体写一个
     简化版解析器，写到一半发现那等于给同一件事留两个答案。
+
+    组码的**含义取决于实体类型**，这不是可选的知识而是必需的：
+    组码 42 在 LWPOLYLINE 里是 bulge（弧段凸度），在 INSERT 里是
+    y 方向缩放。第一版把所有 42 都当 bulge，于是 INSERT 的 42 被吃掉，
+    非等比缩放的块里那个圆**静默地没被压扁**——面积从 157 变成 314，
+    没有任何一行报错。这是这份解析器里最难查的一类错：
+    报错是对的还能看见，数值错了看不见。
     """
     layer = ''
     nums = {}
@@ -362,7 +393,10 @@ def _parse_body(body):
             second[1] = _f(val)
             pending_y = False
         elif code == 42:
-            bulges.append(_f(val))
+            if etype in ('LWPOLYLINE', 'POLYLINE'):
+                bulges.append(_f(val))
+            else:
+                nums[42] = _f(val)
         elif code in (40, 41, 50, 51):
             nums[code] = _f(val)
         elif code in (70, 90):
@@ -430,7 +464,7 @@ def _walk(items, dr, xform=None, depth=0, blocks=None, tol=0.01,
 
     for etype, body in items:
         dr.entities_seen[etype] = dr.entities_seen.get(etype, 0) + 1
-        layer, nums, verts, bulges, end_pt = _parse_body(body)
+        layer, nums, verts, bulges, end_pt = _parse_body(body, etype)
 
         if etype in _SKIP_TYPES:
             continue
@@ -484,16 +518,12 @@ def _walk(items, dr, xform=None, depth=0, blocks=None, tol=0.01,
             if xform == _xform_identity():
                 moved = pts
             else:
-                got = _xform_arc(verts[0][0], verts[0][1], nums[40],
-                                 nums.get(50, 0.0) if etype == 'ARC' else 0.0,
-                                 nums.get(51, 360.0) if etype == 'ARC' else 360.0,
-                                 xform)
-                if got is None:
-                    dr.unsupported.append((etype, layer,
-                                           '非等比缩放的块里的圆弧（会变椭圆），未实现'))
-                    continue
-                cx, cy, r, a0, a1 = got
-                moved = _arc_points(cx, cy, r, a0, a1, tol)
+                # 非等比缩放时圆变成真椭圆——这里不再拒绝，直接按参数角
+                # 采样。旧版在这里报"未实现"，于是那块轮廓整条消失。
+                moved = _xform_arc(verts[0][0], verts[0][1], nums[40],
+                                   nums.get(50, 0.0) if etype == 'ARC' else 0.0,
+                                   nums.get(51, 360.0) if etype == 'ARC' else 360.0,
+                                   xform, tol / scale)
                 if closed:
                     moved = moved[:-1]
             if closed:
@@ -546,7 +576,7 @@ def read_dxf(text, stitch_tol_mm=0.01):
     for etype, body in _split_items(secs.get('BLOCKS', [])):
         if etype != 'BLOCK':
             continue
-        layer, nums, verts, bulges, end_pt = _parse_body(body)
+        layer, nums, verts, bulges, end_pt = _parse_body(body, etype)
         name = nums.get('name')
         if not name:
             continue
@@ -556,7 +586,7 @@ def read_dxf(text, stitch_tol_mm=0.01):
     cur = None
     for etype, body in _split_items(secs.get('BLOCKS', [])):
         if etype == 'BLOCK':
-            layer, nums, verts, bulges, end_pt = _parse_body(body)
+            layer, nums, verts, bulges, end_pt = _parse_body(body, etype)
             cur = nums.get('name')
             continue
         if etype == 'ENDBLK':
