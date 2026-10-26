@@ -1,18 +1,12 @@
 {
   "drawing": {
-    "contours": 3,
+    "contours": 4,
     "entities": {
       "LWPOLYLINE": 3,
       "CIRCLE": 1,
-      "LINE": 1
+      "LINE": 5
     },
-    "unsupported": [
-      [
-        "LINE",
-        "CUT_-3.0",
-        "开链实体（LINE/ARC 单独一条），需要成环才可切，本版未拼接"
-      ]
-    ],
+    "unsupported": [],
     "unknown_depth": [
       [
         "NOTES",
@@ -24,7 +18,44 @@
       0.0,
       60.0,
       40.0
-    ]
+    ],
+    "stitch": {
+      "layers": {
+        "CUT_-3.0": {
+          "edges": 1,
+          "cycles": 0,
+          "open": 1,
+          "junctions": 0,
+          "assumed": 0
+        },
+        "RECT_-2.0": {
+          "edges": 4,
+          "cycles": 1,
+          "open": 0,
+          "junctions": 0,
+          "assumed": 0
+        }
+      },
+      "open_chains": [
+        {
+          "layer": "CUT_-3.0",
+          "points": 2,
+          "gap_mm": 20.0,
+          "ends": [
+            [
+              0.0,
+              45.0
+            ],
+            [
+              20.0,
+              45.0
+            ]
+          ]
+        }
+      ],
+      "junctions": [],
+      "self_intersect_unchecked": true
+    }
   },
   "one_shot": {
     "total": 45,
@@ -97,6 +128,23 @@
     "unknown_depth_layers": [
       "NOTES"
     ],
-    "contours_found": 3
+    "contours_found": 4,
+    "stitched_cycles": 1,
+    "stitched_layers": {
+      "CUT_-3.0": {
+        "edges": 1,
+        "cycles": 0,
+        "open": 1,
+        "junctions": 0,
+        "assumed": 0
+      },
+      "RECT_-2.0": {
+        "edges": 4,
+        "cycles": 1,
+        "open": 0,
+        "junctions": 0,
+        "assumed": 0
+      }
+    }
   }
 }

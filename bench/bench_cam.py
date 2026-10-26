@@ -47,6 +47,10 @@ def _demo_dxf():
     d += circ("HOLE_-6.0", 45, 20, 4)
     d += line("CUT_-3.0", 0, 45, 20, 45)
     d += poly("NOTES", [(70, 0), (80, 0), (80, 10), (70, 10)])
+    # 两处真实图纸里最常见的形态：一堆 LINE 首尾相接，以及一条伸出去的边
+    # 造成的分叉。前者不该被报成"没东西可切"，后者必须被**数出来**。
+    for e in ((0, 0, 15, 0), (15, 0, 15, 8), (15, 8, 0, 8), (0, 8, 0, 0)):
+        d += line("RECT_-2.0", *e)
     d += "0\nENDSEC\n0\nEOF\n"
     return d
 
@@ -105,10 +109,13 @@ def run(out=None, verbose=True):
     # ---- 4. 读不懂的东西要说出来
     dr2 = drawing_mod.read_dxf(_demo_dxf())
     said = {
-        'open_chain_reported': any('开链' in w for _, _, w in dr2.unsupported),
+        'open_chain_reported': bool(dr2.stitch and dr2.stitch.open_chains),
         'unknown_depth_reported': len(dr2.unknown_depth) > 0,
         'unknown_depth_layers': sorted({l for l, _ in dr2.unknown_depth}),
         'contours_found': len(dr2.contours),
+        'stitched_cycles': sum(v['cycles'] for v in dr2.stitch.layers.values())
+                           if dr2.stitch else 0,
+        'stitched_layers': dr2.stitch.as_dict()['layers'] if dr2.stitch else {},
     }
 
     res = {
@@ -135,6 +142,10 @@ def run(out=None, verbose=True):
               % (15, len(gen_problems)))
         print("读不懂的说明了：开链 %s；无深度 %s"
               % (said['open_chain_reported'], said['unknown_depth_reported']))
+        print("拼环：从 LINE 拼出 %d 个闭合轮廓（%s）"
+              % (said['stitched_cycles'],
+                 ", ".join("%s=%d" % (k, v['cycles'])
+                           for k, v in said['stitched_layers'].items()) or "无"))
     if out:
         d = os.path.dirname(out)
         if d:

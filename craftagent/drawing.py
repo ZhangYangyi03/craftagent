@@ -65,7 +65,13 @@ def pairs(text):
 
 
 def sections(ps):
-    """按 SECTION/ENDSEC 切开，返回 {section_name: [(code, value), ...]}。"""
+    """按 SECTION/ENDSEC 切开，返回 {section_name: [(code, value), ...]}。
+
+    段**没有 ENDSEC 结尾**时也收下（见末尾的 flush）。理由：真实图纸
+    会被截断——从 U 盘拷一半、从邮件附件里断掉。截断的文件里 ENTITIES
+    仍然可读，而"一个段都没闭合所以整张图没有 ENTITIES"是一句
+    比事实更严重的谎。真正的空图纸说"没有 ENTITIES"才是对的。
+    """
     out, cur, name = {}, None, None
     for code, val in ps:
         if code == 0 and val.strip() == 'SECTION':
@@ -79,6 +85,8 @@ def sections(ps):
             name = val.strip()
         elif cur is not None:
             cur.append((code, val))
+    if cur is not None and name is not None:
+        out.setdefault(name, []).extend(cur)
     return out
 
 
@@ -91,6 +99,7 @@ class Contour(object):
         self.depth = depth
         self.pts = pts              # [(x, y), ...]，首尾相接，不重复首点
         self.source = source
+        self.assumed_junctions = 0  # 拼环时按"最小转角"猜过几次
 
     def area(self):
         """鞋带公式。符号说明绕向，绝对值是面积。"""
@@ -112,8 +121,9 @@ class Contour(object):
         return min(xs), min(ys), max(xs), max(ys)
 
     def __repr__(self):
-        return '<Contour %s z=%.2f %d pts area=%.1f>' % (
-            self.layer, self.depth, len(self.pts), self.area())
+        extra = (' guess=%d' % self.assumed_junctions) if self.assumed_junctions else ''
+        return '<Contour %s z=%.2f %d pts area=%.1f%s>' % (
+            self.layer, self.depth, len(self.pts), self.area(), extra)
 
 
 # 图层名里带深度的三种常见写法：CUT_-1.5 / CUT-1.5 / CUT_D1.5
@@ -206,6 +216,8 @@ class Drawing(object):
         self.unsupported = []       # [(entity_type, layer, 原因)]
         self.unknown_depth = []     # [(layer, 点数)]
         self.entities_seen = {}
+        self.open_edges = []        # 待拼环的开链（LINE/ARC）
+        self.stitch = None          # StitchReport，拼过才有
 
     def bounds(self):
         xs, ys = [], []
@@ -218,14 +230,17 @@ class Drawing(object):
         return (min(xs), min(ys), max(xs), max(ys))
 
     def summary(self):
-        return {'contours': len(self.contours),
-                'entities': dict(self.entities_seen),
-                'unsupported': list(self.unsupported),
-                'unknown_depth': list(self.unknown_depth),
-                'bounds': self.bounds()}
+        d = {'contours': len(self.contours),
+             'entities': dict(self.entities_seen),
+             'unsupported': list(self.unsupported),
+             'unknown_depth': list(self.unknown_depth),
+             'bounds': self.bounds()}
+        if self.stitch is not None:
+            d['stitch'] = self.stitch.as_dict()
+        return d
 
 
-def read_dxf(text):
+def read_dxf(text, stitch_tol_mm=0.01):
     """读 ASCII DXF，返回 Drawing。
 
     只读 ENTITIES 段。BLOCKS 里的东西不展开——块引用（INSERT）被记成
@@ -262,17 +277,26 @@ def read_dxf(text):
         # 与（不用的）第二点。第一版把 11/21 塞进了 nums，于是每条 LINE
         # 只读到起点，报成"少于两个端点"——报错是对的，原因说的是假的。
         second = [None, None]
+        # LWPOLYLINE 的顶点是 (10,20) 成对**按出现顺序**交替出现的，
+        # 不是"20 配最近一个还缺 y 的 10"。第一版按后者写，
+        # 于是顶点 (30,25) 被读成 (30,None)+(25,None) 的错配：
+        # 三个顶点的型腔报成"少于 3 个点"。报错是对的，原因说的是假的。
+        # 这里用一个开关：10 开一个新顶点，紧跟着的 20 填它的 y。
+        pending_y = False
         for code, val in body:
             if code == 8:
                 layer = val.strip()
             elif code == 10:
                 verts.append([_f(val), None])
-            elif code == 20 and verts and verts[-1][1] is None:
+                pending_y = True
+            elif code == 20 and pending_y and verts:
                 verts[-1][1] = _f(val)
+                pending_y = False
             elif code == 11:
                 second[0] = _f(val)
             elif code == 21:
                 second[1] = _f(val)
+                pending_y = False
             elif code == 42:
                 bulges.append(_f(val))
             elif code in (40, 41, 50, 51):
@@ -339,6 +363,11 @@ def read_dxf(text):
             dr.unsupported.append((etype, layer, '这个实体类型没有实现'))
         else:
             dr.unsupported.append((etype, layer, '不认识的实体类型'))
+
+    if dr.open_edges:
+        contours, rep = stitch(dr.open_edges, stitch_tol_mm)
+        dr.contours.extend(contours)
+        dr.stitch = rep
     return dr
 
 
@@ -367,11 +396,273 @@ def _add_closed(dr, layer, pts, etype):
 
 
 def _add_open(dr, layer, pts, etype):
-    """LINE/ARC 是开的，单独一条切不出件。
+    """LINE/ARC 是开的：单独一条切不出件，但一堆首尾相接的能。
 
-    它们要攒成闭合环才有意义，而"攒"这件事需要端点匹配的容差与顺序回溯，
-    是个真正的算法。这个仓现在没做，所以它把开链**报出来**，
-    而不是悄悄丢掉或者假装闭合。
+    攒完才收（见本文件末尾的 stitch()）：这里只把它放进待拼的筐里。
     """
-    dr.unsupported.append((etype, layer,
-                           '开链实体（LINE/ARC 单独一条），需要成环才可切，本版未拼接'))
+    dr.open_edges.append(Edge(pts, layer, etype))
+
+
+# ---------------------------------------------------------------- 开链拼环
+# 真实图纸里绝大多数轮廓不是 LWPOLYLINE，而是一堆 LINE/ARC 首尾相接。
+# 不拼环就等于"这张图纸没有可切的轮廓"——而那通常是假的。
+#
+# 拼环这件事有一个必须做出的决定，写在这里而不是藏在代码里：
+#
+#     分叉怎么办？三条边共用一个端点时，走哪条？
+#
+# 这台机器上做的是"按最小转角继续"（也就是车间里人眼会做的那个选择），
+# 并且**把每一次这样的猜测都数出来**（Contour.assumed_junctions）。
+# 理由：一个悄悄挑了一条边的拼接器，会生出一条看起来完全正常的轮廓，
+# 而它是错的；报告里必须有一行说"这条轮廓经过了 N 个分叉，每个都是猜的"。
+# 不猜（遇到分叉就放弃）在这里更糟：真实图纸会因为一个无关的标注端点
+# 就整张拼不出来，而"拼不出来"和"这里分叉了"是两条不同的信息。
+class StitchReport(object):
+    """拼接的结果，包括它没能拼成什么。"""
+
+    def __init__(self):
+        self.layers = {}
+        self.open_chains = []       # [(layer, 点数, 两端坐标, 缺多少)]
+        self.junctions = []          # [(layer, x, y, 边数)]
+        self.self_intersect_unchecked = True
+
+    def note_layer(self, layer):
+        d = self.layers.setdefault(layer, {'edges': 0, 'cycles': 0,
+                                           'open': 0, 'junctions': 0,
+                                           'assumed': 0})
+        return d
+
+    def as_dict(self):
+        return {'layers': self.layers,
+                'open_chains': [{'layer': l, 'points': n, 'gap_mm': round(g, 6),
+                                 'ends': a} for l, n, a, g in self.open_chains],
+                'junctions': [{'layer': l, 'at': [round(x, 4), round(y, 4)],
+                               'edges': k} for l, x, y, k in self.junctions],
+                'self_intersect_unchecked': self.self_intersect_unchecked}
+
+
+class Edge(object):
+    """一条开链：有序的点，两端是端点。"""
+
+    def __init__(self, pts, layer, etype):
+        self.pts = pts
+        self.layer = layer
+        self.etype = etype
+
+    def first_dir(self, from_start):
+        """从某一端出发的方向（单位向量），用来算转角。"""
+        pts = self.pts if from_start else list(reversed(self.pts))
+        for q in pts[1:]:
+            dx = q[0] - pts[0][0]
+            dy = q[1] - pts[0][1]
+            n = math.hypot(dx, dy)
+            if n > 1e-12:
+                return (dx / n, dy / n)
+        return (0.0, 0.0)
+
+
+class _Nodes(object):
+    """在容差内把端点归并成节点。
+
+    只按量化格子查会把"恰好跨在格子边界上的同一个点"拆成两个，
+    于是本该闭合的环报成开链——而那个报错的样子非常像图纸有问题。
+    所以查 3x3 邻域，用真实距离判。
+    """
+
+    def __init__(self, tol):
+        self.tol = tol
+        self.pts = []
+        self.grid = {}
+
+    def get(self, pt):
+        kx, ky = int(round(pt[0] / self.tol)), int(round(pt[1] / self.tol))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for idx in self.grid.get((kx + dx, ky + dy), ()):
+                    if math.dist(self.pts[idx], pt) <= self.tol:
+                        return idx
+        idx = len(self.pts)
+        self.pts.append(pt)
+        self.grid.setdefault((kx, ky), []).append(idx)
+        return idx
+
+
+def stitch(edges, tol_mm=0.01, report=None):
+    """把一批开链拼成闭合轮廓。返回 (contours, report)。
+
+    只在不跨图层的前提下拼：不同图层是不同的层深，跨层拼接会悄悄把
+    半条轮廓的深度改掉，而改完之后它看起来完全正常。
+    """
+    report = report or StitchReport()
+    by_layer = {}
+    for e in edges:
+        if len(e.pts) < 2:
+            continue
+        by_layer.setdefault(e.layer, []).append(e)
+
+    out = []
+    for layer in sorted(by_layer):
+        es = by_layer[layer]
+        note = report.note_layer(layer)
+        note['edges'] = len(es)
+        depth = depth_from_layer(layer)
+        if depth is None:
+            # 深度不明就不拼：拼出来一条深度是错的轮廓，比拼不出来更糟。
+            report.open_chains.append((layer, sum(len(e.pts) for e in es), None, 0.0))
+            note['open'] = len(es)
+            continue
+
+        nodes = _Nodes(tol_mm)
+        ea, eb = [], []
+        for e in es:
+            ea.append(nodes.get(e.pts[0]))
+            eb.append(nodes.get(e.pts[-1]))
+
+        # 邻接：节点 -> [(边号, 是否从起点进)]
+        adj = {}
+        for i in range(len(es)):
+            adj.setdefault(ea[i], []).append((i, True))
+            adj.setdefault(eb[i], []).append((i, False))
+
+        used = [False] * len(es)
+        for i in range(len(es)):
+            if used[i]:
+                continue
+            used[i] = True
+            chain = list(es[i].pts)
+            start_node = ea[i]
+            cur_node = eb[i]
+            cur_pt = es[i].pts[-1]
+            assumed = 0
+            closed = False
+            while True:
+                if cur_node == start_node:
+                    closed = True
+                    break
+                cands = [(j, from_start) for (j, from_start) in adj.get(cur_node, ())
+                         if not used[j]]
+                if not cands:
+                    break
+                if len(cands) > 1:
+                    # 分叉：按最小转角继续，并**数出来**。见文件头的说明。
+                    note['junctions'] += 1
+                    report.junctions.append((layer, nodes.pts[cur_node][0],
+                                             nodes.pts[cur_node][1], len(cands) + 1))
+                    assumed += 1
+                    prev = chain[-2] if len(chain) >= 2 else chain[-1]
+                    din = (chain[-1][0] - prev[0], chain[-1][1] - prev[1])
+                    n = math.hypot(din[0], din[1]) or 1.0
+                    din = (din[0] / n, din[1] / n)
+                    scored = []
+                    for (j, from_start) in cands:
+                        d = es[j].first_dir(from_start)
+                        scored.append((din[0] * d[0] + din[1] * d[1], j, from_start))
+                    scored.sort(reverse=True)
+                    cands = [(scored[0][1], scored[0][2])]
+                j, from_start = cands[0]
+                used[j] = True
+                seg = es[j].pts if from_start else list(reversed(es[j].pts))
+                chain.extend(seg[1:])
+                cur_node = eb[j] if from_start else ea[j]
+                cur_pt = chain[-1]
+            if closed and len(chain) >= 4:
+                if math.dist(chain[0], chain[-1]) <= tol_mm:
+                    chain = chain[:-1]
+                c = Contour(layer, depth, chain, 'stitched')
+                c.assumed_junctions = assumed
+                out.append(c)
+                note['cycles'] += 1
+                note['assumed'] += assumed
+            else:
+                report.open_chains.append(
+                    (layer, len(chain),
+                     (tuple(round(v, 4) for v in chain[0]),
+                      tuple(round(v, 4) for v in chain[-1])),
+                     math.dist(chain[0], chain[-1])))
+                note['open'] += 1
+    return out, report
+
+
+def _add_open(dr, layer, pts, etype):
+    """LINE/ARC 是开的：单独一条切不出件，但一堆首尾相接的能。
+
+    攒完才收（见本文件末尾的 stitch()）：这里只把它放进待拼的筐里。
+    """
+    dr.open_edges.append(Edge(pts, layer, etype))
+
+
+# ---------------------------------------------------------------- 开链拼环
+# 真实图纸里绝大多数轮廓不是 LWPOLYLINE，而是一堆 LINE/ARC 首尾相接。
+# 不拼环就等于"这张图纸没有可切的轮廓"——而那通常是假的。
+#
+# 拼环这件事有一个必须做出的决定，写在这里而不是藏在代码里：
+#
+#     分叉怎么办？三条边共用一个端点时，走哪条？
+#
+# 这台机器上做的是"按最小转角继续"（也就是车间里人眼会做的那个选择），
+# 并且**把每一次这样的猜测都数出来**（Contour.assumed_junctions）。
+# 理由：一个悄悄挑了一条边的拼接器，会生出一条看起来完全正常的轮廓，
+# 而它是错的；报告里必须有一行说"这条轮廓经过了 N 个分叉，每个都是猜的"。
+# 不猜（遇到分叉就放弃）在这里更糟：真实图纸会因为一个无关的标注端点
+# 就整张拼不出来，而"拼不出来"和"这里分叉了"是两条不同的信息。
+class StitchReport(object):
+    """拼接的结果，包括它没能拼成什么。"""
+
+    def __init__(self):
+        self.layers = {}
+        self.open_chains = []       # [(layer, 点数, 两端坐标, 缺多少)]
+        self.junctions = []          # [(layer, x, y, 边数)]
+        self.self_intersect_unchecked = True
+
+    def note_layer(self, layer):
+        d = self.layers.setdefault(layer, {'edges': 0, 'cycles': 0,
+                                           'open': 0, 'junctions': 0,
+                                           'assumed': 0})
+        return d
+
+    def as_dict(self):
+        return {'layers': self.layers,
+                'open_chains': [{'layer': l, 'points': n, 'gap_mm': round(g, 6),
+                                 'ends': a} for l, n, a, g in self.open_chains],
+                'junctions': [{'layer': l, 'at': [round(x, 4), round(y, 4)],
+                               'edges': k} for l, x, y, k in self.junctions],
+                'self_intersect_unchecked': self.self_intersect_unchecked}
+
+
+class Edge(object):
+    """一条开链：有序的点，两端是端点。"""
+
+    def __init__(self, pts, layer, etype):
+        self.pts = pts
+        self.layer = layer
+        self.etype = etype
+
+    def first_dir(self, from_start):
+        """从某一端出发的方向（单位向量），用来算转角。"""
+        pts = self.pts if from_start else list(reversed(self.pts))
+        for q in pts[1:]:
+            dx = q[0] - pts[0][0]
+            dy = q[1] - pts[0][1]
+            n = math.hypot(dx, dy)
+            if n > 1e-12:
+                return (dx / n, dy / n)
+        return (0.0, 0.0)
+
+
+def _key(pt, tol):
+    return (int(round(pt[0] / tol)), int(round(pt[1] / tol)))
+
+
+def _find_node(nodes, pt, tol):
+    """在容差内找一个已有节点。先在量化格子里找，再找 3x3 邻域。
+
+    只查同一个格子会把"恰好跨在格子边界上的同一个点"拆成两个，于是
+    一个本该闭合的环报成开链——那个报错的样子非常像图纸有问题。
+    """
+    kx, ky = _key(pt, tol)
+    for dx in (0, -1, 1):
+        for dy in (0, -1, 1):
+            for cand in nodes.get((kx + dx, ky + dy), ()):
+                if math.dist(cand[0], pt) <= tol:
+                    return cand[0]
+    return None
