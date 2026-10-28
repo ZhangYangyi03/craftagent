@@ -41,3 +41,11 @@ jobs:
         run: |
           python -m craftagent twin
           python scripts/check_outputs.py twin
+      # 这三条不是"再跑一遍测试"，是把各自的核心断言印在 CI 日志里：
+      # 公差公式与手册的差、解析切深与网格切深的差、每样参数被钉在哪一档。
+      # 数字变了会先被读到，而不是等到有人用错它。
+      - name: Standards, boundaries and supply routes show their own error
+        run: |
+          python -m craftagent standards --size 10 50 100
+          python -m craftagent hard --ap 2 --diameter 10 --stickout 40
+          python -m craftagent supply
