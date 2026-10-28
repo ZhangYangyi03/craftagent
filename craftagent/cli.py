@@ -83,6 +83,9 @@ def main(argv=None):
     sds.add_argument("--size", type=float, nargs="+", default=[10, 30, 50, 100])
     sds.add_argument("--grades", type=int, nargs="+", default=[6, 7, 8, 9, 10])
 
+    idf = sub.add_parser("identifiable",
+                         help="哪些常数能被定住、哪些不能（判据 + 实测数字）")
+
     s3 = sub.add_parser("supply",
                         help="两档参数怎么被供上：采样清单 / 标准引用 / 试切表（这是路线图，不是数据）")
     s3.add_argument("--out", default="out/supply.json")
@@ -169,6 +172,43 @@ def main(argv=None):
     cf.add_argument("--ap", type=float, default=1.0)
 
     ns = p.parse_args(argv)
+    if ns.cmd == "identifiable":
+        from . import identifiability as idf
+        print("哪些常数能被定住，哪些不能（每条都实测过，判据可复用）")
+        print()
+        print("一类：乘积形式 -> 一个观测定不住两个未知数")
+        rows = idf.peak_tradeoff(5.0e4, 0.025)
+        print("  峰值固定（=1/(2k*zeta)）时：")
+        print("      k(N/mm)     zeta    峰值          a_min(mm)")
+        for r in rows:
+            print("   %10.0f  %.5f  %.3e    %.4f"
+                  % (r["k_n_mm"], r["zeta"], r["peak"],
+                     idf.a_min(r["k_n_mm"], r["zeta"], 700.0, 4)))
+        print("  k 差 8 倍，a_min 只差 4% —— 所以「我用 a_min 对上了」只证明了乘积对。")
+        print("  要分开它们，必须再采一个独立观测：%s"
+              % idf.kz_identifiable_from_peak_alone()["extra_observable_needed"])
+        print()
+        print("二类：只影响高阶小量 -> 它根本不该被逆")
+        ps = idf.penalty_sensitivity(1.0e5, 100.0)
+        print("  罚函数接触刚度（真解 %.1f um）:" % ps["true_u_um"])
+        for r in ps["rows"]:
+            print("    Kp=%9.0e  解=%10.6f um  相对误差 %.2e"
+                  % (r["kp"], r["u_um"], r["rel_err"]))
+        print("  Kp 越大越准，且没有「正确答案」这一说 —— 它是要被推到无穷的东西。")
+        print()
+        print("三类：可辨识的（对照），可辨识到什么程度是可算的")
+        for hr, tag in (([0.02 + 0.005 * i for i in range(11)], "车间试切跨度"),
+                        ([0.005 * 2 ** i for i in range(11)], "实验室跨度")):
+            r = idf.kienzle_identifiable(hr)
+            print("  %s（%.1f 个数量级）：kc1.1 相对 sd %.1f%%，mc sd %.3f"
+                  % (tag, r["h_span_decades"], 100 * r["kc1_rel_sd"], r["mc_sd"]))
+        print()
+        print("总表：")
+        for r in idf.verdict_table():
+            print("  [%s] %-26s %s"
+                  % ("可定" if r["ok"] else "定不住", r["const"], r["why"]))
+        return 0
+
     if ns.cmd == "supply":
         from . import supply as sp
         rows = sp.route_table()
