@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: No dependencies, by design
+        run: python -c "import sys; assert 'numpy' not in sys.modules"
+      - name: Test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pytest -q
+      - name: End-to-end (synth -> analyse -> verify -> grade)
+        run: |
+          python -m craftagent synth
+          python -m craftagent analyse --spec 8.5
+          python -m craftagent verify
+          python -m craftagent grade --auto-mask
