@@ -8,7 +8,7 @@
 
 ## 跑起来
 
-    cd D:\Users\china\Desktop\项目_开发\craftagent
+    cd craftagent
     python -m craftagent synth                 # 造一份合成数据（里面埋好了真值）
     python -m craftagent analyse --spec 8.5    # 对齐 + 变点 + 归因，写出 out/report.md
     python -m craftagent verify                # 拿埋好的真值验收方法本身
