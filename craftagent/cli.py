@@ -66,6 +66,27 @@ def main(argv=None):
     twp.add_argument("--out", default="out/twin.json")
     twp.add_argument("--md", default="out/twin.md")
 
+    hd = sub.add_parser("hard",
+                        help="高难度参数体检：颤振禁区 / 挠度 / 热变形 / 残留高度（每条标 grade）")
+    hd.add_argument("--ap", type=float, default=2.0, help="轴向切深 mm")
+    hd.add_argument("--fn", type=float, default=600.0, help="主模态固有频率 Hz（必须实测）")
+    hd.add_argument("--k", type=float, default=5.0e4, help="刚度 N/mm（必须实测）")
+    hd.add_argument("--zeta", type=float, default=0.025, help="阻尼比（必须实测）")
+    hd.add_argument("--kt", type=float, default=700.0, help="切削力系数 N/mm^2")
+    hd.add_argument("--teeth", type=int, default=4)
+    hd.add_argument("--diameter", type=float, default=10.0, help="刀具直径 mm")
+    hd.add_argument("--stickout", type=float, default=40.0, help="伸出长度 mm")
+    hd.add_argument("--out", default=None, help="把完整结果写成 json")
+
+    sds = sub.add_parser("standards",
+                         help="标准库：公差用公式重算，并把与手册的差一起印出来")
+    sds.add_argument("--size", type=float, nargs="+", default=[10, 30, 50, 100])
+    sds.add_argument("--grades", type=int, nargs="+", default=[6, 7, 8, 9, 10])
+
+    s3 = sub.add_parser("supply",
+                        help="两档参数怎么被供上：采样清单 / 标准引用 / 试切表（这是路线图，不是数据）")
+    s3.add_argument("--out", default="out/supply.json")
+
     v = sub.add_parser("verify", help="用合成数据里埋好的真值验收方法本身")
     v.add_argument("--out", default="out/verify.json")
     v.add_argument("--tol", type=int, default=40, help="变点位置容差（分钟）")
@@ -148,6 +169,93 @@ def main(argv=None):
     cf.add_argument("--ap", type=float, default=1.0)
 
     ns = p.parse_args(argv)
+    if ns.cmd == "supply":
+        from . import supply as sp
+        rows = sp.route_table()
+        print("两档参数怎么被供上：每一小块钉到一条路，而不是钉到一个数")
+        print()
+        print("%-26s %-11s %s" % ("项目", "走哪条路", "凭什么"))
+        for r in rows:
+            print("%-26s %-11s %s" % (r["item"], r["route"], r["how"]))
+        print()
+        print("第三档（必须实测）要采什么：")
+        for k, v in sp.MEASURE_PLAN.items():
+            print("  %s" % v["what"])
+            print("    怎么做：%s" % v["how"])
+            print("    拒绝：%s" % v["refuse"])
+        if ns.out:
+            import json as _json
+            os.makedirs(os.path.dirname(ns.out) or ".", exist_ok=True)
+            with open(ns.out, "w", encoding="utf-8") as fh:
+                _json.dump({"routes": rows, "measure": sp.MEASURE_PLAN}, fh,
+                           indent=2, ensure_ascii=False)
+            print("\n写到 %s" % ns.out)
+        return 0
+
+    if ns.cmd == "hard":
+        from . import hard as hard_mod
+        rep = hard_mod.report(ap_mm=ns.ap, fn_hz=ns.fn, k_n_mm=ns.k, zeta=ns.zeta,
+                              kt=ns.kt, teeth=ns.teeth,
+                              d_tool_mm=ns.diameter, stickout_mm=ns.stickout)
+        print("高难度参数体检   ap=%.2f mm  D=%.0f mm  伸出=%.0f mm"
+              % (ns.ap, ns.diameter, ns.stickout))
+        print()
+        print("一、无条件稳定切深 a_min = %.3f mm（解析式，任何转速都不能超）"
+              % rep["a_min_mm"])
+        st = rep["stability"]
+        print("    网格扫出的最坏点         %.3f mm @ %d rpm（与解析式差 %.1f%%）"
+              % (st["worst"]["a_lim_mm"], st["worst"]["rpm"],
+                 100.0 * abs(st["worst"]["a_lim_mm"] / rep["a_min_mm"] - 1.0)))
+        print("    说明：%s" % st["note"])
+        av = rep["avoid"]
+        if av["avoid"]:
+            print("二、ap=%.2f mm 时不能碰的转速段（%d 段，占扫过范围的 %.1f%%）："
+                  % (ns.ap, len(av["avoid"]), 100.0 * av["bad_fraction"]))
+            for a, b in av["avoid"][:8]:
+                print("      %5d ~ %5d rpm" % (a, b))
+            if len(av["avoid"]) > 8:
+                print("      ...（共 %d 段）" % len(av["avoid"]))
+        else:
+            print("二、ap=%.2f mm 低于 a_min，扫过的转速范围内都能切" % ns.ap)
+        print("三、切削力 %.0f N（均值）-> 刀具挠度 %.1f um"
+              % (rep["force"]["force_n"], rep["deflection"]["deflection_mm"] * 1000))
+        print("    对照：IT7 在 30-50 mm 段是 25 um —— 让刀量自己就吃掉了这个量级")
+        print("四、热变形：500 mm 钢件每 1 K 长 %.2f um（IT7@50 段由 5 K 吃掉）"
+              % rep["thermal_1k_500mm_um"])
+        print()
+        print("哪一档数能信：")
+        print("  fn/k/zeta  = 必须实测（随刀柄、伸出、转速变）")
+        print("  kt         = 可引用（Kienzle 常用值，出处见 hard.py）")
+        print("  上面四条公式 = 可重算（解析解与网格解互相对上，见 tests/test_hard.py）")
+        if ns.out:
+            import json as _json
+            os.makedirs(os.path.dirname(ns.out) or ".", exist_ok=True)
+            with open(ns.out, "w", encoding="utf-8") as fh:
+                _json.dump(rep, fh, indent=2, ensure_ascii=False)
+            print("\n完整结果写到 %s" % ns.out)
+        return 0
+
+    if ns.cmd == "standards":
+        from . import standards as s_mod
+        print("ISO 286 公差：i = 0.45*D^(1/3) + 0.001*D，IT 等级是 i 的整数倍")
+        print("公式值 / 取整值 / 手册值 三者并列，差多少由你自己判断该不该信")
+        print()
+        for size in ns.size:
+            print("尺寸 <= %g mm" % size)
+            print("  等级    i(um)   公式    取整   手册   差")
+            for r in s_mod.tolerance_table(size, tuple(ns.grades)):
+                hb = "-" if r["handbook_um"] is None else "%g" % r["handbook_um"]
+                dl = "-" if r["delta_um"] is None else "%+.1f" % r["delta_um"]
+                warn = "  <-- 表格区，请查表" if not r["formula_applies"] else ""
+                print("  IT%-3d %7.3f %8.2f %7.1f %6s %6s%s"
+                      % (r["grade"], r["i_um"], r["raw_um"], r["um"], hb, dl, warn))
+            print()
+        f = s_mod.fit_summary(50, 7, 6)
+        print("配合 %s @50mm：孔 %.0f um + 轴 %.0f um => 最大间隙 %.0f um"
+              % (f["fit"], f["hole_um"], f["shaft_um"], f["max_clearance_um"]))
+        print("  %s" % f["note"])
+        return 0
+
     if ns.cmd == "cnc":
         if ns.cnc_cmd == "feeds":
             if ns.material is None:
