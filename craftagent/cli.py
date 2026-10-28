@@ -1,5 +1,6 @@
 """命令行入口。"""
-import argparse, json, os, sys
+import argparse
+import json, json, os, sys
 from . import synth as synth_mod
 from .pipeline import run as run_pipeline
 from .ask import answer, summary_text
@@ -82,6 +83,12 @@ def main(argv=None):
                          help="标准库：公差用公式重算，并把与手册的差一起印出来")
     sds.add_argument("--size", type=float, nargs="+", default=[10, 30, 50, 100])
     sds.add_argument("--grades", type=int, nargs="+", default=[6, 7, 8, 9, 10])
+
+    cd = sub.add_parser("cad",
+                        help="读 STEP/IGES：三角面、包围盒、体积、拓扑计数（需要 OpenCASCADE）")
+    cd.add_argument("--part", default=None, help="要读的 STEP/IGES；不给就造一块已知尺寸的样板")
+    cd.add_argument("--tol", type=float, default=0.5, help="三角化线性挠度（模型单位）")
+    cd.add_argument("--json", action="store_true")
 
     fem = sub.add_parser("fem",
                          help="二维平面应变内核：三道公认的门 + Kp 的 U 形在二维里还在不在")
@@ -176,6 +183,45 @@ def main(argv=None):
     cf.add_argument("--ap", type=float, default=1.0)
 
     ns = p.parse_args(argv)
+    if ns.cmd == "cad":
+        from . import cad as cadm
+        st = cadm.backend_status()
+        if not st["available"]:
+            print("这一层没有可用后端：%s" % st["why"])
+            print("缺失的依赖怎么装：%s" % st["how_to_fix"])
+            print("（在这一层缺失时 craftagent 的其余部分照常工作 —— 它是可选适配器。）")
+            return 1
+        print("后端：%s" % st["python"])
+        path = ns.part
+        if path is None:
+            path = os.path.join("out", "sample_block.step")
+            made = cadm.make_sample(path, with_hole=True)
+            if not made.get("ok"):
+                print("样板件造不出来：%s" % made.get("why"))
+                return 1
+            print("没给 --part，用样板件（50x30x10 块，中心 R8 通孔，体积解析值 %.3f）"
+                  % cadm.exact_volume_with_hole())
+        part = cadm.read_part(path, tol=ns.tol)
+        if ns.json:
+            slim = {k: v for k, v in part.items() if k not in ("coords", "tris")}
+            print(json.dumps(slim, ensure_ascii=False, indent=2))
+            return 0 if part.get("ok") else 1
+        print(cadm.summary(part))
+        if not part.get("ok"):
+            for p_ in part.get("problems", []):
+                print("  问题：%s" % p_)
+            return 1
+        c = part["counts"]
+        print("  拓扑：%d 实体 / %d 壳 / %d 面 / %d 边 / %d 顶点 / %d 三角面"
+              % (c["solids"], c["shells"], c["faces"], c["edges"],
+                 c["vertices"], c["triangles"]))
+        print("  体积 %.6f  表面积 %.3f" % (part["volume"], part["area"]))
+        print("  最大面：%s" % max(part["per_face"],
+                                   key=lambda f_: f_["triangles"]))
+        print("  三角化挠度 %.3f —— 这是模型单位，0.5 只够装配级干涉检查，"
+              "拿去算应力要小一个量级" % part["tol"])
+        return 0
+
     if ns.cmd == "fem":
         from . import fem2d as fem2
         print("二维平面应变内核（纯 Python，无依赖）。三道公认的门先过，再谈结论。")

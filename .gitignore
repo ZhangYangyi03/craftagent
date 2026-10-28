@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 out/*.log
+.venv-occ/
+out/*.step
+out/*.json
+out/_probe_occ*.py
