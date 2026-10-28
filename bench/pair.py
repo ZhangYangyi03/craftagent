@@ -45,6 +45,14 @@ def compare(text, plan_params=None, dt=0.001, name='<pair>'):
     exe = os.path.join(CNCRT, 'cncrt.exe')
     if not os.path.exists(exe):
         return {'ok': None, 'reason': 'cncrt.exe not built; run bench/build_cncrt.py first'}
+    if not sys.platform.startswith('win'):
+        # It is a Windows PE binary checked into the repo. On Linux it exists
+        # but cannot be exec'd, and os.posix_spawn raises PermissionError --
+        # a skip, not a failure: the parity claim is about the two
+        # implementations, and this box has no way to run the C one.
+        return {'ok': None,
+                'reason': 'cncrt.exe is a Windows binary; parity needs Windows '
+                          '(or run bench/build_cncrt.py here)'}
     p = dict(plan.DEFAULT)
     p.update(plan_params or {})
     segs, meta = gcode.parse(text, name=name)
