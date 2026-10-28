@@ -1,0 +1,586 @@
+{
+ "('GLM-5.3-Flash', 2)": {
+  "label": "mGLM53Flash_r2",
+  "lines": 186,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=nan",
+    "tip": null,
+    "beam": 17.333333333333336,
+    "ratio": null,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=nan",
+    "tip": null,
+    "beam": 17.333333333333336,
+    "ratio": null,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=nan",
+    "tip": null,
+    "beam": 17.333333333333336,
+    "ratio": null,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 0,
+  "exit_reason": "no_parseable_output",
+  "round": 2,
+  "model": "GLM-5.3-Flash",
+  "gen_seconds": 28.5,
+  "fields": {
+   "finish": "stop",
+   "ct": 2313,
+   "rc": 28,
+   "cc": 6532
+  }
+ },
+ "('GLM-5.3-Flash', 3)": {
+  "label": "mGLM53Flash_r3",
+  "lines": 205,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=0.7686260752",
+    "tip": 0.7686260752,
+    "beam": 17.333333333333336,
+    "ratio": 0.044343812030769224,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=0.9833274829",
+    "tip": 0.9833274829,
+    "beam": 17.333333333333336,
+    "ratio": 0.056730431705769226,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=1.059418271",
+    "tip": 1.059418271,
+    "beam": 17.333333333333336,
+    "ratio": 0.06112028486538461,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.044343812030769224,
+  "ratio_fine": 0.06112028486538461,
+  "sane": false,
+  "converges": true,
+  "exit_reason": "insane_number",
+  "round": 3,
+  "model": "GLM-5.3-Flash",
+  "gen_seconds": 32.8,
+  "fields": {
+   "finish": "stop",
+   "ct": 2609,
+   "rc": 97,
+   "cc": 6650
+  }
+ },
+ "('DeepSeek-V4.1-Flash', 3)": {
+  "label": "mDeepSeekV41Flash_r3",
+  "lines": 189,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 3,
+  "model": "DeepSeek-V4.1-Flash",
+  "gen_seconds": 34.8,
+  "fields": {
+   "finish": "stop",
+   "ct": 9002,
+   "rc": 15720,
+   "cc": 6489
+  }
+ },
+ "('DeepSeek-V4.1-Flash', 2)": {
+  "label": "mDeepSeekV41Flash_r2",
+  "lines": 230,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 2,
+  "model": "DeepSeek-V4.1-Flash",
+  "gen_seconds": 48.5,
+  "fields": {
+   "finish": "stop",
+   "ct": 12690,
+   "rc": 22788,
+   "cc": 7587
+  }
+ },
+ "('Qwen3.7-Max', 3)": {
+  "label": "mQwen37Max_r3",
+  "lines": 194,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 3,
+  "model": "Qwen3.7-Max",
+  "gen_seconds": 70.3,
+  "fields": {
+   "finish": "stop",
+   "ct": 7769,
+   "rc": 14661,
+   "cc": 6714
+  }
+ },
+ "('Qwen3.7-Max', 2)": {
+  "label": "mQwen37Max_r2",
+  "lines": 194,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 2,
+  "model": "Qwen3.7-Max",
+  "gen_seconds": 102.9,
+  "fields": {
+   "finish": "stop",
+   "ct": 10208,
+   "rc": 14986,
+   "cc": 5426
+  }
+ },
+ "('DeepSeek-V4-Pro', 3)": {
+  "label": "mDeepSeekV4Pro_r3",
+  "lines": 214,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 3,
+  "model": "DeepSeek-V4-Pro",
+  "gen_seconds": 111.0,
+  "fields": {
+   "finish": "stop",
+   "ct": 11400,
+   "rc": 20813,
+   "cc": 6892
+  }
+ },
+ "('GLM-5.3', 2)": {
+  "label": "mGLM53_r2",
+  "lines": 162,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 2,
+  "model": "GLM-5.3",
+  "gen_seconds": 117.2,
+  "fields": {
+   "finish": "stop",
+   "ct": 2489,
+   "rc": 657,
+   "cc": 6147
+  }
+ },
+ "('GLM-5.3', 3)": {
+  "label": "mGLM53_r3",
+  "lines": 184,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=6.118683736e-06",
+    "tip": 6.118683736e-06,
+    "beam": 17.333333333333336,
+    "ratio": 3.530009847692307e-07,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=2.246542497e-06",
+    "tip": 2.246542497e-06,
+    "beam": 17.333333333333336,
+    "ratio": 1.2960822098076921e-07,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=2.289096432e-07",
+    "tip": 2.289096432e-07,
+    "beam": 17.333333333333336,
+    "ratio": 1.3206325569230768e-08,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 3.530009847692307e-07,
+  "ratio_fine": 1.3206325569230768e-08,
+  "sane": false,
+  "converges": false,
+  "exit_reason": "insane_number",
+  "round": 3,
+  "model": "GLM-5.3",
+  "gen_seconds": 131.6,
+  "fields": {
+   "finish": "stop",
+   "ct": 2772,
+   "rc": 543,
+   "cc": 7331
+  }
+ },
+ "('DeepSeek-V4-Pro', 2)": {
+  "label": "mDeepSeekV4Pro_r2",
+  "lines": 218,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 2,
+  "model": "DeepSeek-V4-Pro",
+  "gen_seconds": 156.5,
+  "fields": {
+   "finish": "stop",
+   "ct": 15603,
+   "rc": 27293,
+   "cc": 6741
+  }
+ },
+ "('Kimi-K2.7-Code', 2)": {
+  "label": "mKimiK27Code_r2",
+  "lines": 250,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=10.55157385",
+    "tip": 10.55157385,
+    "beam": 17.333333333333336,
+    "ratio": 0.6087446451923076,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.44683364",
+    "tip": 15.44683364,
+    "beam": 17.333333333333336,
+    "ratio": 0.8911634792307691,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.91270434",
+    "tip": 16.91270434,
+    "beam": 17.333333333333336,
+    "ratio": 0.9757329426923076,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.6087446451923076,
+  "ratio_fine": 0.9757329426923076,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 2,
+  "model": "Kimi-K2.7-Code",
+  "gen_seconds": 161.0,
+  "fields": {
+   "finish": "stop",
+   "ct": 11032,
+   "rc": 23246,
+   "cc": 7763
+  }
+ },
+ "('Kimi-K2.7-Code', 3)": {
+  "label": "mKimiK27Code_r3",
+  "lines": 241,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.29801746",
+    "tip": 12.29801746,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095010073076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323993",
+    "tip": 15.73323993,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869190384614,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069246",
+    "tip": 16.95069246,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245649999998,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095010073076923,
+  "ratio_fine": 0.9779245649999998,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 3,
+  "model": "Kimi-K2.7-Code",
+  "gen_seconds": 264.3,
+  "fields": {
+   "finish": "stop",
+   "ct": 10860,
+   "rc": 24550,
+   "cc": 7483
+  }
+ }
+}

@@ -1,0 +1,81 @@
+{
+ "DeepSeek-V4.1-Flash": {
+  "label": "mDeepSeekV41Flash_r0",
+  "lines": 236,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 0,
+  "model": "DeepSeek-V4.1-Flash",
+  "gen_seconds": 102.7,
+  "finish_reason": "stop",
+  "completion_tokens": 17450,
+  "reasoning_chars": 29793,
+  "content_chars": 7598
+ },
+ "DeepSeek-V4-Pro": {
+  "label": "mDeepSeekV4Pro_r0",
+  "lines": 1,
+  "compiles": false,
+  "compiler_errors": "D:/msys64/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../x86_64-w64-mingw32/bin/ld.exe: D:/msys64/mingw64/bin/../lib/gcc/x86_64-w64-mingw32/14.2.0/../../../../lib/libmingw32.a(lib64_libmingw32_a-crtexewin.o): in function `main':\nC:/M/B/src/mingw-w64/mingw-w64-crt/crt/crtexewin.c:67:(.text.startup+0xc5): undefined reference to `WinMain'\ncollect2.exe: error: ld returned 1 exit status\n",
+  "exit_reason": "compile_failed",
+  "round": 0,
+  "model": "DeepSeek-V4-Pro",
+  "gen_seconds": 285.4,
+  "finish_reason": "length",
+  "completion_tokens": 20000,
+  "reasoning_chars": 64192,
+  "content_chars": 0
+ },
+ "GLM-5.3-Flash": {
+  "label": "mGLM53Flash_r0",
+  "lines": 48,
+  "compiles": false,
+  "compiler_errors": "0.c:2:\nD:/msys64/mingw64/include/vadefs.h:14:9: error: expected '=', ',', ';', 'asm' or '__attribute__' before '#pragma'\n   14 | #pragma pack(push,_CRT_PACKING)\n      |         ^~~~\nC:\\Users\\china\\AppData\\Local\\Temp\\llmkernel_g10f_q5p\\mGLM53Flash_r0.c: In function 'main':\nC:\\Users\\china\\AppData\\Local\\Temp\\llmkernel_g10f_q5p\\mGLM53Flash_r0.c:48:9: error: expected expression at end of input\n   48 |         { lam,            lam + 2.0 * mu, 0.0 },\n      |         ^\nC:\\Users\\china\\AppData\\Local\\Temp\\llmkernel_g10f_q5p\\mGLM53Flash_r0.c:48:9: error: expected declaration or statement at end of input\n",
+  "exit_reason": "compile_failed",
+  "round": 0,
+  "model": "GLM-5.3-Flash",
+  "gen_seconds": 287.1,
+  "finish_reason": "length",
+  "completion_tokens": 20000,
+  "reasoning_chars": 55979,
+  "content_chars": 1596
+ },
+ "GLM-5.3": {
+  "err": "The read operation timed out",
+  "sec": 519
+ }
+}

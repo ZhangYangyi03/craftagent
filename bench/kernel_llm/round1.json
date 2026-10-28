@@ -1,0 +1,252 @@
+{
+ "GLM-5.3-Flash": {
+  "label": "mGLM53Flash_r1",
+  "lines": 167,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=3.074504301",
+    "tip": 3.074504301,
+    "beam": 17.333333333333336,
+    "ratio": 0.17737524813461536,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=3.933309932",
+    "tip": 3.933309932,
+    "beam": 17.333333333333336,
+    "ratio": 0.2269217268461538,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=4.237673085",
+    "tip": 4.237673085,
+    "beam": 17.333333333333336,
+    "ratio": 0.24448113951923073,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.17737524813461536,
+  "ratio_fine": 0.24448113951923073,
+  "sane": false,
+  "converges": true,
+  "exit_reason": "insane_number",
+  "round": 1,
+  "model": "GLM-5.3-Flash",
+  "effort": "low",
+  "gen_seconds": 30.9,
+  "fields": {
+   "finish": "stop",
+   "ct": 1997,
+   "rc": 93,
+   "cc": 5101
+  }
+ },
+ "Qwen3.7-Max": {
+  "label": "mQwen37Max_r1",
+  "lines": 181,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 1,
+  "model": "Qwen3.7-Max",
+  "effort": "low",
+  "gen_seconds": 71.2,
+  "fields": {
+   "finish": "stop",
+   "ct": 7479,
+   "rc": 14407,
+   "cc": 5728
+  }
+ },
+ "GLM-5.3": {
+  "label": "mGLM53_r1",
+  "lines": 165,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 1,
+  "model": "GLM-5.3",
+  "effort": "low",
+  "gen_seconds": 114.3,
+  "fields": {
+   "finish": "stop",
+   "ct": 2483,
+   "rc": 616,
+   "cc": 6327
+  }
+ },
+ "DeepSeek-V4-Pro": {
+  "label": "mDeepSeekV4Pro_r1",
+  "lines": 221,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 1,
+  "model": "DeepSeek-V4-Pro",
+  "effort": "low",
+  "gen_seconds": 115.1,
+  "fields": {
+   "finish": "stop",
+   "ct": 10359,
+   "rc": 14694,
+   "cc": 7030
+  }
+ },
+ "Kimi-K2.7-Code": {
+  "label": "mKimiK27Code_r1",
+  "lines": 243,
+  "compiles": true,
+  "runs": [
+   {
+    "mesh": "10x2",
+    "rc": 0,
+    "stdout_head": "tip_uy=12.2980172",
+    "tip": 12.2980172,
+    "beam": 17.333333333333336,
+    "ratio": 0.7095009923076923,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "20x4",
+    "rc": 0,
+    "stdout_head": "tip_uy=15.73323973",
+    "tip": 15.73323973,
+    "beam": 17.333333333333336,
+    "ratio": 0.9076869074999998,
+    "stderr_head": ""
+   },
+   {
+    "mesh": "40x8",
+    "rc": 0,
+    "stdout_head": "tip_uy=16.95069234",
+    "tip": 16.95069234,
+    "beam": 17.333333333333336,
+    "ratio": 0.9779245580769229,
+    "stderr_head": ""
+   }
+  ],
+  "runs_ok": 3,
+  "ratio_first": 0.7095009923076923,
+  "ratio_fine": 0.9779245580769229,
+  "sane": true,
+  "converges": true,
+  "exit_reason": "ok",
+  "round": 1,
+  "model": "Kimi-K2.7-Code",
+  "effort": "low",
+  "gen_seconds": 170.0,
+  "fields": {
+   "finish": "stop",
+   "ct": 10901,
+   "rc": 24103,
+   "cc": 7776
+  }
+ }
+}
