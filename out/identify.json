@@ -1,0 +1,430 @@
+{
+  "cycle_min": 480,
+  "dt_min": 1,
+  "machines": {
+    "M01": {
+      "time_constants": {
+        "ambient_rh": {
+          "tau_min": 97.39751321245954,
+          "y0": 44.88780467756072,
+          "y_inf": 45.03816172079752,
+          "gain": 0.15035704323679783,
+          "sigma": 0.34595764954976604,
+          "snr": 0.4346111248948376,
+          "settled": true,
+          "r2": 0.012681973818381098,
+          "resid_mad": 0.21916816652565174,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": false,
+          "why": "曲线几乎是平的：振幅 0.150 与噪声 0.346 同量级，这个通道没有可辨识的响应；指数结构的解释力 R2=0.01 太低，形状不像指数上升",
+          "shifts": 15,
+          "base_level": 44.963,
+          "channel": "ambient_rh"
+        },
+        "coolant_temp_c": {
+          "tau_min": 29.96609850629769,
+          "y0": 19.97052495711673,
+          "y_inf": 20.80572094138537,
+          "gain": 0.8351959842686387,
+          "sigma": 0.06552228211169472,
+          "snr": 12.746747478131093,
+          "settled": true,
+          "r2": 0.9000899227599872,
+          "resid_mad": 0.041334234226775735,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 20.767,
+          "channel": "coolant_temp_c"
+        },
+        "spindle_current_a": {
+          "tau_min": 32.35686175301099,
+          "y0": 11.982734450015615,
+          "y_inf": 12.566467093754031,
+          "gain": 0.5837326437384164,
+          "sigma": 0.03302323018429727,
+          "snr": 17.67642476162082,
+          "settled": true,
+          "r2": 0.9448614177933378,
+          "resid_mad": 0.022026497056422123,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 12.584,
+          "channel": "spindle_current_a"
+        },
+        "temp_c": {
+          "tau_min": 30.722393630997654,
+          "y0": 23.974583861302683,
+          "y_inf": 26.950112875147287,
+          "gain": 2.9755290138446018,
+          "sigma": 0.04979693440489023,
+          "snr": 59.75325689029554,
+          "settled": true,
+          "r2": 0.9940959172262709,
+          "resid_mad": 0.03449672365496248,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 26.956,
+          "channel": "temp_c"
+        },
+        "vibration_mm_s": {
+          "tau_min": 29.367388570253723,
+          "y0": 1.7689137110321038,
+          "y_inf": 1.9801185641317416,
+          "gain": 0.21120485309963777,
+          "sigma": 0.016773704220594817,
+          "snr": 12.591425860503708,
+          "settled": true,
+          "r2": 0.8706746892865891,
+          "resid_mad": 0.012895618592405844,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 1.992,
+          "channel": "vibration_mm_s"
+        }
+      },
+      "drift": {
+        "ambient_rh": {
+          "ok": true,
+          "per_hour": -0.0002583692179468679,
+          "level_first_half": 44.989999999999995,
+          "level_second_half": 44.9745,
+          "hours": 119.98333333333333
+        },
+        "coolant_temp_c": {
+          "ok": true,
+          "per_hour": 0.00012501736352271621,
+          "level_first_half": 20.764499999999998,
+          "level_second_half": 20.772,
+          "hours": 119.98333333333333
+        },
+        "spindle_current_a": {
+          "ok": true,
+          "per_hour": 0.027595499374913183,
+          "level_first_half": 12.579,
+          "level_second_half": 14.2345,
+          "hours": 119.98333333333333
+        },
+        "temp_c": {
+          "ok": true,
+          "per_hour": 0.012801778024725608,
+          "level_first_half": 26.946,
+          "level_second_half": 27.714,
+          "hours": 119.98333333333333
+        },
+        "vibration_mm_s": {
+          "ok": true,
+          "per_hour": 0.011084872899013753,
+          "level_first_half": 1.992,
+          "level_second_half": 2.657,
+          "hours": 119.98333333333333
+        }
+      },
+      "symptom_gain": {
+        "ambient_rh": {
+          "ok": true,
+          "gain": 0.5464452104480337,
+          "offset": -6.568139393583028,
+          "r2_train": 0.009501771158962002,
+          "r2_holdout": -46.48711158293559,
+          "r2_cv": 0.02363551816526066,
+          "n_cv": 5,
+          "n_train": 138,
+          "n_holdout": 45,
+          "segment": "变点后 189 点"
+        },
+        "coolant_temp_c": {
+          "ok": true,
+          "gain": 0.6422683516607867,
+          "offset": 4.635982330440827,
+          "r2_train": 0.0006207882957268707,
+          "r2_holdout": -47.2175099020398,
+          "r2_cv": -0.0061033709138720305,
+          "n_cv": 5,
+          "n_train": 138,
+          "n_holdout": 45,
+          "segment": "变点后 189 点"
+        },
+        "spindle_current_a": {
+          "ok": true,
+          "gain": 1.9987720622829175,
+          "offset": -19.381033669573323,
+          "r2_train": 0.9976830742953047,
+          "r2_holdout": 0.977659182696664,
+          "r2_cv": 0.9986618035711952,
+          "n_cv": 5,
+          "n_train": 138,
+          "n_holdout": 45,
+          "segment": "变点后 189 点"
+        },
+        "temp_c": {
+          "ok": true,
+          "gain": 3.297245277709797,
+          "offset": -81.58959561271769,
+          "r2_train": 0.9357215498066562,
+          "r2_holdout": -0.10228490420135183,
+          "r2_cv": 0.95852994120713,
+          "n_cv": 5,
+          "n_train": 138,
+          "n_holdout": 45,
+          "segment": "变点后 189 点"
+        },
+        "vibration_mm_s": {
+          "ok": true,
+          "gain": 4.994821873184145,
+          "offset": -4.208751858555164,
+          "r2_train": 0.9975504768021498,
+          "r2_holdout": 0.9747849467616032,
+          "r2_cv": 0.9984435140062099,
+          "n_cv": 5,
+          "n_train": 138,
+          "n_holdout": 45,
+          "segment": "变点后 189 点"
+        }
+      }
+    },
+    "M02": {
+      "time_constants": {
+        "ambient_rh": {
+          "tau_min": 15599.999999999998,
+          "y0": 45.02468381676018,
+          "y_inf": 40.288656671556566,
+          "gain": -4.736027145203616,
+          "sigma": 0.3622071755134629,
+          "snr": 13.075464721232677,
+          "settled": true,
+          "r2": 0.003303279284620042,
+          "resid_mad": 0.23459801036024075,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": false,
+          "why": "tau=15600 分钟接近窗口长度 240 分钟，参数与窗口正撞，认不出；指数结构的解释力 R2=0.00 太低，形状不像指数上升",
+          "shifts": 15,
+          "base_level": 44.989999999999995,
+          "channel": "ambient_rh"
+        },
+        "coolant_temp_c": {
+          "tau_min": 29.96609850629769,
+          "y0": 19.999853615179145,
+          "y_inf": 20.800286143826323,
+          "gain": 0.8004325286471796,
+          "sigma": 0.06185303431344072,
+          "snr": 12.94087731558943,
+          "settled": true,
+          "r2": 0.9039061718166825,
+          "resid_mad": 0.041200209254441233,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 20.7665,
+          "channel": "coolant_temp_c"
+        },
+        "spindle_current_a": {
+          "tau_min": 29.96609850629769,
+          "y0": 12.022179975417782,
+          "y_inf": 12.599590418804231,
+          "gain": 0.5774104433864489,
+          "sigma": 0.027257269358466348,
+          "snr": 21.183722983868893,
+          "settled": true,
+          "r2": 0.9550154535481905,
+          "resid_mad": 0.01874128886792903,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 12.5805,
+          "channel": "spindle_current_a"
+        },
+        "temp_c": {
+          "tau_min": 30.3118051410999,
+          "y0": 24.011343330071984,
+          "y_inf": 27.00022026730765,
+          "gain": 2.9888769372356663,
+          "sigma": 0.04770022137731705,
+          "snr": 62.65960305704097,
+          "settled": true,
+          "r2": 0.9951613611685831,
+          "resid_mad": 0.02983323188541931,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 26.947000000000003,
+          "channel": "temp_c"
+        },
+        "vibration_mm_s": {
+          "tau_min": 29.96609850629769,
+          "y0": 1.8006835739296745,
+          "y_inf": 2.0003408839621413,
+          "gain": 0.19965731003246687,
+          "sigma": 0.01100774339476529,
+          "snr": 18.137896467264444,
+          "settled": true,
+          "r2": 0.9169724567524213,
+          "resid_mad": 0.00923606016431644,
+          "points": 240,
+          "dt_min": 1,
+          "window_min": 240,
+          "identifiable": true,
+          "why": "",
+          "shifts": 15,
+          "base_level": 1.992,
+          "channel": "vibration_mm_s"
+        }
+      },
+      "drift": {
+        "ambient_rh": {
+          "ok": true,
+          "per_hour": -6.667592721207584e-05,
+          "level_first_half": 45.0135,
+          "level_second_half": 45.0095,
+          "hours": 119.98333333333333
+        },
+        "coolant_temp_c": {
+          "ok": true,
+          "per_hour": 0.00012501736352271621,
+          "level_first_half": 20.762,
+          "level_second_half": 20.7695,
+          "hours": 119.98333333333333
+        },
+        "spindle_current_a": {
+          "ok": true,
+          "per_hour": 6.667592721213505e-05,
+          "level_first_half": 12.578,
+          "level_second_half": 12.582,
+          "hours": 119.98333333333333
+        },
+        "temp_c": {
+          "ok": true,
+          "per_hour": 0.00010001389081817298,
+          "level_first_half": 26.9465,
+          "level_second_half": 26.9525,
+          "hours": 119.98333333333333
+        },
+        "vibration_mm_s": {
+          "ok": true,
+          "per_hour": 3.333796360605643e-05,
+          "level_first_half": 1.991,
+          "level_second_half": 1.993,
+          "hours": 119.98333333333333
+        }
+      },
+      "symptom_gain": {
+        "ambient_rh": {
+          "ok": true,
+          "gain": 0.003543770784755454,
+          "offset": 6.214271168494468,
+          "r2_train": 0.0003668988550785679,
+          "r2_holdout": -0.0031270463856236663,
+          "r2_cv": -0.00304482603329137,
+          "n_cv": 5,
+          "n_train": 536,
+          "n_holdout": 178,
+          "segment": "全段 720 点"
+        },
+        "coolant_temp_c": {
+          "ok": true,
+          "gain": 0.1748072996167373,
+          "offset": 2.749585415606822,
+          "r2_train": 0.03835278576703549,
+          "r2_holdout": 0.058339828487042444,
+          "r2_cv": 0.04740033919440689,
+          "n_cv": 5,
+          "n_train": 536,
+          "n_holdout": 178,
+          "segment": "全段 720 点"
+        },
+        "spindle_current_a": {
+          "ok": true,
+          "gain": 0.3994291828837183,
+          "offset": 1.356907835113752,
+          "r2_train": 0.07743211526997518,
+          "r2_holdout": 0.05121390796940484,
+          "r2_cv": 0.07458435340831293,
+          "n_cv": 5,
+          "n_train": 536,
+          "n_holdout": 178,
+          "segment": "全段 720 点"
+        },
+        "temp_c": {
+          "ok": true,
+          "gain": 0.12456973727396094,
+          "offset": 3.037303253805619,
+          "r2_train": 0.12349711400033858,
+          "r2_holdout": 0.1182979569117859,
+          "r2_cv": 0.1037486575589549,
+          "n_cv": 5,
+          "n_train": 536,
+          "n_holdout": 178,
+          "segment": "全段 720 点"
+        },
+        "vibration_mm_s": {
+          "ok": true,
+          "gain": 0.8250097560508435,
+          "offset": 4.736402466747247,
+          "r2_train": 0.054588291924156374,
+          "r2_holdout": 0.0681780449899907,
+          "r2_cv": 0.057077761127338644,
+          "n_cv": 5,
+          "n_train": 536,
+          "n_holdout": 178,
+          "segment": "全段 720 点"
+        }
+      }
+    }
+  },
+  "needs": [
+    {
+      "param": "伺服时间常数 tau_s / 位置环增益 kv",
+      "why": "plant.py 里它是圆角误差的主因，但它只有在一毫秒级的指令-实际位置对上才认得出；工况日志是一分钟一个采样点，差三个数量级",
+      "collect": "CNC 的跟随误差（following error）或实际位置，采样 >= 1 kHz，最好同时录一次 G0/G1 的阶跃响应"
+    },
+    {
+      "param": "各轴加速度上限 a_max、jerk",
+      "why": "由机床伺服参数决定，不在日志里；现在用的是 plan.py 的保守默认值",
+      "collect": "CNC 参数页里的 acc/dec 时间常数，或做一次空程加速标定（打表 + 高速采样）"
+    },
+    {
+      "param": "切削力系数 kc 的实测值",
+      "why": "feeds.py 用的是 Kienzle 常用简化值，不是这台机床、这对刀具的实测值",
+      "collect": "测力仪（或主轴电流标定）在一组 ap/ae/vf 下的阶跃试验，至少 3x3 网格"
+    },
+    {
+      "param": "砂轮磨损速率与修整周期",
+      "why": "本批数据能给出\"症状漂移率\"，但那是电流/振动的漂移，不是磨损量本身",
+      "collect": "修整前后的首件圆度 + 修整量，连续记 30 个修整周期"
+    },
+    {
+      "param": "热变形系数（温度 -> 尺寸）",
+      "why": "有温度通道和圆度，但没有在\"温度单独变化、其它都不动\"的条件下取过数，所以温度和尺寸的关系与班次效应混在一起，分不开",
+      "collect": "停机后冷机启动、只开机不切削的纯热漂移试验，连续 4 小时"
+    }
+  ],
+  "quality_channel": "roundness_um"
+}

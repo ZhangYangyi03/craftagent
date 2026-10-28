@@ -8,6 +8,8 @@ from . import annotation as annot_mod, grader as grader_mod, fieldwork as fw_mod
 from . import cnc as cnc_mod, gate_cnc as gate_mod
 from . import drawing as drawing_mod, cam as cam_mod, feeds as feeds_mod
 from . import collide as collide_mod
+from . import ident as ident_mod
+from . import twin as twin_mod
 
 def _ensure_utf8_stdout():
     """中文报告要能在 cp1252 控制台上打出来。
@@ -46,6 +48,23 @@ def main(argv=None):
     q.add_argument("question")
     q.add_argument("--report", default="out/report.json")
     q.add_argument("--machine", default=None)
+
+    idp = sub.add_parser("identify",
+                         help="从实测日志辨识数字孪生参数（时间常数 / 漂移率 / 症状-质量增益）")
+    idp.add_argument("--machine", default="data/machine_log.csv")
+    idp.add_argument("--cmm", default="data/cmm_report.csv")
+    idp.add_argument("--cycle", type=int, default=480, help="班次长度（分钟），要能整除 1440")
+    idp.add_argument("--out", default="out/identify.json")
+    idp.add_argument("--md", default="out/identify.md")
+
+    twp = sub.add_parser("twin",
+                         help="把辨识结果装成孪生，并当场验收：赢不了整班恒定基线的通道剔掉")
+    twp.add_argument("--machine", default="data/machine_log.csv")
+    twp.add_argument("--cmm", default="data/cmm_report.csv")
+    twp.add_argument("--cycle", type=int, default=480)
+    twp.add_argument("--min-improvement", type=float, default=0.05)
+    twp.add_argument("--out", default="out/twin.json")
+    twp.add_argument("--md", default="out/twin.md")
 
     v = sub.add_parser("verify", help="用合成数据里埋好的真值验收方法本身")
     v.add_argument("--out", default="out/verify.json")
@@ -339,6 +358,66 @@ def main(argv=None):
                 print("  [%s] %s -- %s" % (mark, q["name"], q["detail"]))
         print("恢复率 %s（%d/%d）" % (res["rate"], res["passed"], res["scored"]))
         print("明细写入 %s" % ns.out)
+        return 0
+    if ns.cmd == "identify":
+        from . import align as align_mod, changepoint as cp_mod
+        rows_all = align_mod.load_machine_log(ns.machine)
+        cmm, qn = align_mod.load_cmm(ns.cmm)
+        rows_by, al_by, cp_by = {}, {}, {}
+        for mid in sorted({r["id"] for r in rows_all}):
+            rows = [r for r in rows_all if r["id"] == mid]
+            rows_by[mid] = rows
+            al, _ = align_mod.align(rows, [c for c in cmm if c["id"] == mid])
+            al_by[mid] = al
+            cps = cp_mod.find_changes([a["quality"] for a in al], min_size=60)
+            if cps:
+                cp_by[mid] = cps[0][0]
+        res = ident_mod.identify(rows_by, al_by, cycle_min=ns.cycle, cp_by_machine=cp_by)
+        res["quality_channel"] = qn
+        for d in (os.path.dirname(ns.out), os.path.dirname(ns.md)):
+            if d:
+                os.makedirs(d, exist_ok=True)
+        json.dump(res, open(ns.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        text = ident_mod.render(res)
+        open(ns.md, "w", encoding="utf-8", newline="\n").write(text + "\n")
+        print(text)
+        print("参数表写入 %s 和 %s" % (ns.out, ns.md))
+        return 0
+    if ns.cmd == "twin":
+        from . import align as align_mod, changepoint as cp_mod
+        rows_all = align_mod.load_machine_log(ns.machine)
+        cmm, qn = align_mod.load_cmm(ns.cmm)
+        rows_by, al_by, cp_by = {}, {}, {}
+        for mid in sorted({r["id"] for r in rows_all}):
+            rows = [r for r in rows_all if r["id"] == mid]
+            rows_by[mid] = rows
+            al, _ = align_mod.align(rows, [c for c in cmm if c["id"] == mid])
+            al_by[mid] = al
+            cps = cp_mod.find_changes([a["quality"] for a in al], min_size=60)
+            if cps:
+                cp_by[mid] = cps[0][0]
+        res = ident_mod.identify(rows_by, al_by, cycle_min=ns.cycle, cp_by_machine=cp_by)
+        twins, checks, dump = {}, {}, {}
+        for mid in rows_by:
+            tw = twin_mod.from_identify(res, mid)
+            tw.prune(rows_by[mid], min_improvement=ns.min_improvement)
+            twins[mid] = tw
+            checks[mid] = tw.validation
+            dump[mid] = {"installed": tw.channels, "symptom_map": tw.symptom_map,
+                         "rejected": tw.rejected, "not_identifiable": tw.unidentifiable,
+                         "validation": tw.validation}
+        for d in (os.path.dirname(ns.out), os.path.dirname(ns.md)):
+            if d:
+                os.makedirs(d, exist_ok=True)
+        json.dump({"cycle_min": ns.cycle, "quality_channel": qn, "machines": dump,
+                   "needs": res["needs"]},
+                  open(ns.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        text = twin_mod.render(twins, checks)
+        open(ns.md, "w", encoding="utf-8", newline="\n").write(text + "\n")
+        print(text)
+        n_ok = sum(1 for m in checks.values() for r in m.values() if r["beats_baseline"])
+        n_all = sum(len(m) for m in checks.values())
+        print("孪生：%d/%d 条通道通过验收，写入 %s 和 %s" % (n_ok, n_all, ns.out, ns.md))
         return 0
     if ns.cmd == "verify":
         info = synth_mod.write(os.path.join(os.path.dirname(ns.out) or ".", "..", "data")
