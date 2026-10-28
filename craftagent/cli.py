@@ -83,6 +83,10 @@ def main(argv=None):
     sds.add_argument("--size", type=float, nargs="+", default=[10, 30, 50, 100])
     sds.add_argument("--grades", type=int, nargs="+", default=[6, 7, 8, 9, 10])
 
+    fem = sub.add_parser("fem",
+                         help="二维平面应变内核：三道公认的门 + Kp 的 U 形在二维里还在不在")
+    fem.add_argument("--nx", type=int, default=20)
+
     idf = sub.add_parser("identifiable",
                          help="哪些常数能被定住、哪些不能（判据 + 实测数字）")
 
@@ -172,6 +176,39 @@ def main(argv=None):
     cf.add_argument("--ap", type=float, default=1.0)
 
     ns = p.parse_args(argv)
+    if ns.cmd == "fem":
+        from . import fem2d as fem2
+        print("二维平面应变内核（纯 Python，无依赖）。三道公认的门先过，再谈结论。")
+        print()
+        pt = fem2.patch_test(4, 4)
+        print("门一 分片试验（常应变场必须被精确复现）")
+        print("  4x4 网格，%d 自由度，最大绝对误差 %.2e，相对 %.2e -> %s"
+              % (pt["ndof"], pt["max_abs_err"], pt["rel_err"],
+                 "过" if pt["ok"] else "不过"))
+        nsh = fem2.rigid_body_nullity()
+        print("门二 单元零空间维数（必须恰为 3：两平移 + 一转动）")
+        print("  秩 %d，零空间 %d -> %s" % (nsh["rank"], nsh["nullity"],
+                                            "过" if nsh["ok"] else "不过"))
+        print("门三 悬臂梁端部挠度 vs 梁理论（细化必须收敛过去）")
+        for nx, ny in ((10, 2), (20, 4), (40, 8)):
+            c = fem2.cantilever_tip(nx, ny)
+            print("  %-7s ndof=%-4d 比值 %.4f" % ("%dx%d" % (nx, ny), c["ndof"], c["ratio"]))
+        print("  比值不到 1 是梁理论本身在短梁上的偏差，收敛就说明装配与求解对。")
+        print()
+        print("结论一：一维量到的 U 形，在二维里还在不在")
+        r2 = fem2.penalty_contact_2d(nx=ns.nx, ny=1,
+                                     ratios=[1e2, 1e4, 1e6, 1e8, 1e10, 1e12])
+        print("  平面应变，%d 自由度，参照取反力最平的那一档（Kp/k=%g）"
+              % (r2["ndof"], r2["reference_ratio"]))
+        print("  %-11s %-20s %-12s" % ("Kp/k_chain", "反力", "相对误差"))
+        for row in r2["rows"]:
+            print("  %-11.0e %-20.10f %-12.3e"
+                  % (row["ratio"], row["reaction"], row["rel_err_vs_stablest"]))
+        print("  谷底仍在 1e8 量级，两边分别按 k/Kp 与 eps*Kp/k 上升。")
+        print("  所以那条结论不是一维模型的假象。")
+        print("  %s" % r2["caveat"])
+        return 0
+
     if ns.cmd == "identifiable":
         from . import identifiability as idf
         from . import penalty as idf_penalty

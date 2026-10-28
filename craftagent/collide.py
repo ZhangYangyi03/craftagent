@@ -166,6 +166,7 @@ def sample_seg(seg, step=0.5, max_pts=4000):
              a[2] + (b[2] - a[2]) * k / n) for k in range(n + 1)]
 
 
+
 # --------------------------------------------------------------- 四条规则
 def check(segs, fixture, eps=1e-9):
     """四条撞刀规则。返回 ({rule: 理由}, {rule: 行号})。
