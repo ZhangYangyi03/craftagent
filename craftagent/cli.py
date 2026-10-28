@@ -174,6 +174,7 @@ def main(argv=None):
     ns = p.parse_args(argv)
     if ns.cmd == "identifiable":
         from . import identifiability as idf
+        from . import penalty as idf_penalty
         print("哪些常数能被定住，哪些不能（每条都实测过，判据可复用）")
         print()
         print("一类：乘积形式 -> 一个观测定不住两个未知数")
@@ -194,7 +195,27 @@ def main(argv=None):
         for r in ps["rows"]:
             print("    Kp=%9.0e  解=%10.6f um  相对误差 %.2e"
                   % (r["kp"], r["u_um"], r["rel_err"]))
-        print("  Kp 越大越准，且没有「正确答案」这一说 —— 它是要被推到无穷的东西。")
+        print("  ↑ 这一段只在上半支成立。往推到无穷会掉头，见下面「四类」。")
+        print()
+        print("四类：有上界的东西 —— Kp 的正确取值是一条 U 形的谷底，不是无穷")
+        sw = idf_penalty.sweep()
+        print("  40 单元链，浮点解与 Fraction 精确解对拍（真解 F=%.6f N）:" % sw["limit_force_n"])
+        print("  %-12s %-20s %-12s" % ("Kp/k_chain", "F(float)", "相对误差"))
+        for r in sw["rows"]:
+            if r["kp_over_kchain"] in (1.0, 1e2, 1e4, 1e6, 1e8, 1e10, 1e12, 1e14, 1e16):
+                print("  %-12.0e %-20.12f %-12.3e"
+                      % (r["kp_over_kchain"], r["force_n"], r["err"]))
+        b = idf_penalty.best_kp_ratio()
+        print("  谷底 Kp/k_chain = sqrt(1/eps) = %.3e，那里也只能准到 %.1e。"
+              % (b["kp_over_kchain"], b["expected_err"]))
+        print("  左边是穿透量没进杆（误差 ~ k/Kp），右边是条件数丢位（误差 ~ eps*Kp/k）。")
+        print("  所以 Kp 有上界，而**上界有两种成因**，取决于求解器：")
+        print("    隐式：坏在丢位      Kp <= k_chain * tol/eps")
+        print("    显式：坏在步长      Kp <= m_eff * (2/dt_max)^2")
+        w = idf_penalty.kp_window(26.25, 0.2625, 1e-3)
+        print("  一例（下界由穿透量定，上界由丢位定）：[%.1f, %.3e]，%s"
+              % (w["lower_n_per_mm"], w["upper_n_per_mm"], w["advice"]))
+        print("  %s" % idf_penalty.grid_dependence(1.0)["note"])
         print()
         print("三类：可辨识的（对照），可辨识到什么程度是可算的")
         for hr, tag in (([0.02 + 0.005 * i for i in range(11)], "车间试切跨度"),
