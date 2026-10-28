@@ -10,6 +10,14 @@ tests/test_cad.py 在没有 OpenCASCADE 时会 skip，这是有意的：本地�
 import os
 import sys
 
+# Windows runner 的 stdout 是 cp1252，一句中文诊断就能把它撞成
+# UnicodeEncodeError —— 于是"检查有没有 OCP"这个步骤失败，而失败原因
+# 和 OCP 一点关系都没有。这一行是给那件事写的，不是为了好看。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from craftagent import cad  # noqa: E402

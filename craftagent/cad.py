@@ -30,8 +30,9 @@ import tempfile
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _WORKER = os.path.join(_HERE, "tools", "occ_worker.py")
-# 本机上装了 OCP 的解释器。顺序有意义：先看项目 venv，再看本机 conda。
-_CANDIDATE_PYTHONS = (
+# 本机上额外值得一试的解释器（装在项目里、PATH 上看不到的那些）。
+# 这里**只是补充**，不是全部 —— 见 _interpreter_candidates() 的顺序。
+_EXTRA_PYTHONS = (
     os.path.join(os.path.dirname(_HERE), ".venv-occ", "Scripts", "python.exe"),
     os.path.join(os.path.dirname(_HERE), ".venv-occ", "bin", "python"),
     r"C:\Users\china\miniconda3\python.exe",
@@ -39,11 +40,41 @@ _CANDIDATE_PYTHONS = (
 SUPPORTED_EXT = (".step", ".stp", ".iges", ".igs")
 
 
-def find_interpreter():
-    """找一个能 import OCP 的解释器。找不到就返回 None —— 不猜，也不回退到
-    当前解释器：当前解释器没有 OCP，回退只会让错误更晚出现。"""
+def _interpreter_candidates():
+    """按顺序给出所有值得一试的解释器。
+
+    顺序是有教训的，第一版写错了：我原来只列了本机那几个硬编码路径，
+    结果 CI 上装了 cadquery-ocp 却报"没有 OpenCASCADE" —— 因为 CI 把
+    它装进的就是当前解释器（sys.executable），而那个根本不在我的列表里。
+
+    这就是"读进来了但是空的"的另一种形态：探测范围太窄，于是适配器
+    报告"没有"，而实际上有。所以 sys.executable 和 PATH 必须排在
+    硬编码路径前面 —— 能装 OCP 的地方，最常见的就是当前解释器。
+    """
     env = os.environ.get("CRAFTAGENT_OCC_PYTHON")
-    cands = ([env] if env else []) + list(_CANDIDATE_PYTHONS)
+    out = []
+    if env:
+        out.append(env)
+    out.append(sys.executable)
+    for name in ("python3", "python"):
+        w = shutil.which(name)
+        if w:
+            out.append(w)
+    out.extend(_EXTRA_PYTHONS)
+    seen, uniq = set(), []
+    for p_ in out:
+        if p_ and p_ not in seen:
+            seen.add(p_)
+            uniq.append(p_)
+    return uniq
+
+
+def find_interpreter(candidates=None):
+    """找一个能 import OCP 的解释器，找不到返回 None。
+
+    `candidates` 只为测试存在：想断言"一个都没有时它明确说不"，
+    就得能把候选列表换成空。"""
+    cands = _interpreter_candidates() if candidates is None else list(candidates)
     for py in cands:
         if not py or not os.path.exists(py):
             continue
@@ -57,16 +88,21 @@ def find_interpreter():
     return None
 
 
-def backend_status():
-    """这一层到底可不可用，以及凭什么这么说。给 CLI 用，也给测试用。"""
-    py = find_interpreter()
+def backend_status(candidates=None):
+    """这一层到底可不可用，以及凭什么这么说。给 CLI 用，也给测试用。
+
+    `tried` 必须是真的试过的那一串，不是"我打算试的" —— 一个说不清
+    自己试过什么的诊断，下一次还是查不出问题。"""
+    cands = _interpreter_candidates() if candidates is None else list(candidates)
+    py = find_interpreter(cands)
     if py is None:
         return {"available": False,
                 "why": "没有找到能 import OCP 的解释器（OpenCASCADE）",
-                "tried": [p for p in _CANDIDATE_PYTHONS],
+                "tried": cands,
                 "how_to_fix": "python -m venv .venv-occ && .venv-occ/Scripts/pip "
                               "install cadquery-ocp"}
-    return {"available": True, "python": py, "worker": _WORKER}
+    return {"available": True, "python": py, "worker": _WORKER,
+            "tried": cands}
 
 
 def read_part(path, tol=0.5, timeout=300):

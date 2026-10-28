@@ -10,6 +10,7 @@ OpenCASCADE 是可选依赖（CI 上不装），所以没有 OCP 时这一组测
 """
 import math
 import os
+import sys
 import tempfile
 import unittest
 
@@ -32,24 +33,32 @@ class TestBackend(unittest.TestCase):
             self.assertIn("how_to_fix", st)
 
     def test_no_interpreter_means_a_clear_no_not_a_crash(self):
-        """没有 OCP 时必须返回 ok=False 和原因，不能抛异常。
-        曾经考虑过回退到当前解释器 —— 那只会把错误推后到 import 的那一刻。"""
-        old = os.environ.get("CRAFTAGENT_OCC_PYTHON")
-        os.environ["CRAFTAGENT_OCC_PYTHON"] = "__nonexistent__"
-        try:
-            saved = cad._CANDIDATE_PYTHONS
-            cad._CANDIDATE_PYTHONS = ()
-            try:
-                st = cad.backend_status()
-                self.assertFalse(st["available"])
-                self.assertIn("why", st)
-            finally:
-                cad._CANDIDATE_PYTHONS = saved
-        finally:
-            if old is None:
-                os.environ.pop("CRAFTAGENT_OCC_PYTHON", None)
-            else:
-                os.environ["CRAFTAGENT_OCC_PYTHON"] = old
+        """一个候选都没有时必须返回 ok=False 和原因，不能抛异常。"""
+        st = cad.backend_status(candidates=[])
+        self.assertFalse(st["available"])
+        self.assertIn("why", st)
+        self.assertIn("how_to_fix", st)
+        self.assertEqual(st["tried"], [])
+
+    def test_current_interpreter_is_probed_first_after_the_env_override(self):
+        """这一条是被 CI 抓出来的。
+
+        第一版只列了本机几个硬编码路径，于是 CI 上装了 cadquery-ocp
+        却报"没有 OpenCASCADE" —— CI 把它装进的是 sys.executable，
+        而它不在列表里。探测范围太窄和读进来是空的，是同一种失败：
+        适配器说"没有"，而实际上有。"""
+        os.environ.pop("CRAFTAGENT_OCC_PYTHON", None)
+        cands = cad._interpreter_candidates()
+        self.assertEqual(cands[0], sys.executable)
+        self.assertEqual(len(cands), len(set(cands)), "候选里有重复项")
+
+    def test_diagnostics_list_what_was_actually_tried(self):
+        """说不清自己试过什么的诊断，下一次还是查不出问题。"""
+        st = cad.backend_status()
+        self.assertIn("tried", st)
+        self.assertTrue(st["tried"], "tried 不能是空的：空的诊断等于没诊断")
+        for p_ in st["tried"]:
+            self.assertIsInstance(p_, str)
 
     def test_missing_file_and_bad_extension_are_reported(self):
         self.assertFalse(cad.read_part("no_such_part.step")["ok"])

@@ -1,6 +1,17 @@
 """命令行入口。"""
 import argparse
-import json, json, os, sys
+import json
+import os
+import sys
+
+# 这个包的输出全是中文。Windows 上 stdout 默认是 cp1252，一句中文就能把命令
+# 撞成 UnicodeEncodeError，而被撞的那条命令看起来像"功能有 bug"。CI 上
+# scripts/check_cad_ran.py 就是这么失败了一次，失败原因和 CAD 毫无关系。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:      # 被重定向成非 TextIOWrapper 时没有这个方法
+    pass
+
 from . import synth as synth_mod
 from .pipeline import run as run_pipeline
 from .ask import answer, summary_text

@@ -6,3 +6,5 @@ out/*.log
 out/*.step
 out/*.json
 out/_probe_occ*.py
+# 一个 git add -A 把 Windows 缓存目录当成相对路径收了进来。
+%SystemDrive%/
