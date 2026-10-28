@@ -9,7 +9,21 @@ from . import cnc as cnc_mod, gate_cnc as gate_mod
 from . import drawing as drawing_mod, cam as cam_mod, feeds as feeds_mod
 from . import collide as collide_mod
 
+def _ensure_utf8_stdout():
+    """中文报告要能在 cp1252 控制台上打出来。
+
+    CI 在 windows-latest 上就是这样炸的：第一行「按师傅的边界裁段重算」还没
+    写完就 UnicodeEncodeError。控制台代码页是历史包袱，不该让程序本身死掉。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv=None):
+    _ensure_utf8_stdout()
     p = argparse.ArgumentParser(prog="craftagent", description="精密制造工艺数据 -> 异常归因")
     sub = p.add_subparsers(dest="cmd", required=True)
 
