@@ -31,11 +31,13 @@ jobs:
           python -m craftagent analyse --spec 8.5
           python -m craftagent verify
           python -m craftagent grade --auto-mask
+      # 断言写成文件，不在命令行里内联：windows runner 是 PowerShell，
+      # 内联引号出问题的样子是"命令找不到"，本地还复现不出来。
       - name: Parameter identification (twin coefficients from logs)
         run: |
           python -m craftagent identify
-          python -c "import json;d=json.load(open('out/identify.json'));assert d['machines'],'no machines';assert d['needs'],'needs list must not be empty';print('ok', list(d['machines']))"
+          python scripts/check_outputs.py identify
       - name: Twin assembly must pass its own acceptance
         run: |
           python -m craftagent twin
-          python -c "import json;d=json.load(open('out/twin.json'));h=d['machines']['M02'];bad=[c for c,r in h['validation'].items() if not r['beats_baseline']];assert not bad,'healthy machine channels must beat the flat baseline: %s'%bad;m=d['machines']['M01'];assert m['rejected'],'a drifting machine must have channels rejected';print('ok twin')"
+          python scripts/check_outputs.py twin
