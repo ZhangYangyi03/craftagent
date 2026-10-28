@@ -49,3 +49,32 @@ jobs:
           python -m craftagent standards --size 10 50 100
           python -m craftagent hard --ap 2 --diameter 10 --stickout 40
           python -m craftagent supply
+
+  # CAD 这一层单独一个 job，装 OpenCASCADE（70 MB，Linux / 52 MB，
+  # Windows）。因为它装在 test job 里等于给四个矩阵格各加一刻钟，
+  # 而它要验的不是"在四个平台上都能跑"，是"读进来的那块零件对不对"。
+  # 不给 OCP 时 tests/test_cad.py 会 skip 并说出来 —— 这个 job 的存在
+  # 就是为了让"说出来"不要变成常态。
+  cad:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: OpenCASCADE (optional adapter, installed here only)
+        run: python -m pip install --upgrade pip cadquery-ocp==7.8.1.1
+      # 读回来的体积对着解析值 12989.3807 校验，容差 1e-6 相对。
+      # 这一条如果 skip 了，说明 CAD 层其实没被验收 —— 所以下面那一步
+      # 先把 skip 数读出来并断言为 0。
+      - name: The CAD tests must actually run, not skip
+        run: python scripts/check_cad_ran.py
+      - name: Read a STEP part and check it against the analytic volume
+        run: |
+          python -m craftagent cad
+          python -m unittest tests.test_cad -v
