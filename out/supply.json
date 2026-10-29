@@ -1,0 +1,145 @@
+{
+  "routes": [
+    {
+      "item": "公差等级 IT",
+      "route": "recompute",
+      "how": "ISO 286-1: i=0.45*D^(1/3)+0.001*D, ITn = k_n*i",
+      "output": "um 数值 + 与手册的差（<=3 mm 段声明为表值区）"
+    },
+    {
+      "item": "基本偏差（H/h/js/k/n/p...)",
+      "route": "reference",
+      "how": "ISO 286-2 表值，偏差是按段查的，不是公式",
+      "output": "带段号和出处；不给插值"
+    },
+    {
+      "item": "优先数 / 标准直径",
+      "route": "recompute",
+      "how": "ISO 3 基本序列 R5/R10/R20 = 10^(j/n)",
+      "output": "序列族，可任意精度重算"
+    },
+    {
+      "item": "材料弹性常数 E/nu/rho/alpha",
+      "route": "reference",
+      "how": "GB/T 699、ASM Handbook Vol.2、AMS 4911",
+      "output": "带 source 字段，同一材料多个来源时给范围"
+    },
+    {
+      "item": "Kienzle 系数 kc1.1 / mc",
+      "route": "reference",
+      "how": "Kienzle 1961 及后续手册；随材料批次变",
+      "output": "标为 reference + 说明离散度；不许当定值"
+    },
+    {
+      "item": "切削功率 / 扭矩 / 切削力",
+      "route": "recompute",
+      "how": "Pc=ap*ae*vf*kc/60e6, Pc=F*vc/60000",
+      "output": "kW / N·m / N，能被反算核对"
+    },
+    {
+      "item": "无条件稳定切深",
+      "route": "recompute",
+      "how": "a_min = 2*k*zeta*(1+zeta)/(Kt*N)",
+      "output": "mm；上界，任何转速不能超"
+    },
+    {
+      "item": "颤振稳定叶瓣",
+      "route": "recompute",
+      "how": "Altintas & Budak 1995 一维正交频域解",
+      "output": "转速 -> 可切深；输出的是转速禁区，不是推荐转速"
+    },
+    {
+      "item": "刀具挠度 / 让刀",
+      "route": "recompute",
+      "how": "d = F L^3/(3 E I), I = pi D^4/64",
+      "output": "um；与 IT 公差同量纲，可直接比较"
+    },
+    {
+      "item": "热伸长",
+      "route": "recompute",
+      "how": "dL = alpha*L*dT",
+      "output": "um/K；这一条常常比机床精度更能解释超差"
+    },
+    {
+      "item": "残留高度 / Ra 几何上限",
+      "route": "recompute",
+      "how": "h = R - sqrt(R^2-(s/2)^2)",
+      "output": "um；反解给出达成某 Ra 的最大步距"
+    },
+    {
+      "item": "最小切屑厚度（进给下限）",
+      "route": "measure",
+      "how": "fz_min = 刃口钝圆半径 * 比值(0.05~0.35)",
+      "output": "必须有刃口半径实测；只给上限的表全都缺了这一侧"
+    },
+    {
+      "item": "系统的 fn / k / zeta",
+      "route": "measure",
+      "how": "锤击试验（模态分析）",
+      "output": "三个数 + 测点位置 + 转速条件"
+    },
+    {
+      "item": "Taylor 常数 C / n",
+      "route": "measure",
+      "how": "至少两组 vc 下的实测寿命，对数坐标拟合",
+      "output": "C、n、R2、测了几点；一组数据不许出曲线"
+    },
+    {
+      "item": "推荐 vc / fz 的厂商表",
+      "route": "reference",
+      "how": "Sandvik/Kennametal/Iscar 样本与在线选型，引用标出处",
+      "output": "范围 + 适用条件（材料状态、冷却、涂层）"
+    },
+    {
+      "item": "本文档不提供的：某材料某工序的最佳 vc",
+      "route": "-",
+      "how": "它对条件敏感，条件一变就不成立",
+      "output": "不提供；只提供给定 vc 下的力、功率、稳定性、寿命关系"
+    },
+    {
+      "item": "历史仿真结果",
+      "route": "measure",
+      "how": "仿真输出来自别人的求解器，逆它等于逆其误差",
+      "output": "不复制；改成用本机日志辨识等效参数（见 ident.py）"
+    }
+  ],
+  "measure": {
+    "modal": {
+      "what": "主模态固有频率 fn、刚度 k、阻尼比 zeta",
+      "how": "锤击试验 + 加速度计，力锤在刀尖侧向敲，采集 FRF 后做单自由度拟合",
+      "points": [
+        "X/Y 两个方向各一次",
+        "不同伸出长度各一次",
+        "至少一个高转速下再测一次（离心刚化）"
+      ],
+      "refuse": "不测就填 600 Hz / 5e4 N/mm / 0.025 —— 那是把叶瓣图画成装饰"
+    },
+    "edge_radius": {
+      "what": "刃口钝圆半径",
+      "how": "刀具显微镜或轮廓仪，每批抽检；新刀与涂层后各测一次",
+      "points": [
+        "按刀具批次",
+        "涂层前后"
+      ],
+      "refuse": "不能拿'新刀 5~10 um'当这批量值 —— 而进给下限就挂在这个数上"
+    },
+    "taylor": {
+      "what": "Taylor 常数 C 与指数 n",
+      "how": "同一材料、同一刀、两组不同 vc，各跑到磨钝判据，记录寿命",
+      "points": [
+        "至少 2 组 vc",
+        "每组至少 2 次重复以估离散"
+      ],
+      "refuse": "一组数据拟出的曲线是编的（fit_taylor 会直接拒绝）"
+    },
+    "logging": {
+      "what": "机床日志本身（振动/电流/温度/跟随误差 + 质检结果）",
+      "how": "按分钟采样，保留原始列，不预聚合；质检结果按件号对齐到时间",
+      "points": [
+        "冷机到稳定至少一个完整班次",
+        "包含一次已知的不良件"
+      ],
+      "refuse": "只留均值就会把变点抹平 —— ident.py 的时间常数就辨识不出来了"
+    }
+  }
+}

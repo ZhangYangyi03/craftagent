@@ -114,9 +114,47 @@ def main(argv=None):
                         help="三维六面体内核：分片 / 零空间 / 悬臂梁 / 稀疏对稠密")
     f3.add_argument("--nx", type=int, nargs="+", default=[8, 16, 24])
 
+    tp = sub.add_parser("tet",
+                        help="实体 -> 四面体网格：体积 / 拓扑 / 分片 / 刚体转动 / 悬臂梁")
+    tp.add_argument("--h", type=float, nargs="+", default=[4.0, 2.0])
+
     bm = sub.add_parser("beam",
                         help="二维框架单元：四条解析解 + 细化不变 + 剪切变形占比")
     bm.add_argument("--n", type=int, default=4)
+
+    sh = sub.add_parser("shell",
+                        help="MITC4 平板壳：简支/固支/膜/零空间/薄极限")
+    sh.add_argument("--n", type=int, nargs="+", default=[4, 8, 12])
+
+    nl = sub.add_parser("nonlinear",
+                        help="几何非线性（对弹性线）+ 材料非线性（对双线性闭式）")
+    nl.add_argument("--turn", type=float, nargs="+",
+                    default=[0.5, 1.5707963267948966])
+
+    cg = sub.add_parser("csg",
+                        help="纯 Python BSP 布尔：体积精确，流形性单独报")
+    cg.add_argument("--n", type=int, nargs="+", default=[12, 48])
+
+    ocb = sub.add_parser("ocbool",
+                         help="OpenCASCADE 布尔（可选适配器）：没有 OCP 就如实说没有")
+    ocb.add_argument("--op", default="cut", choices=["fuse", "cut", "common"])
+    ocb.add_argument("--a", default=None)
+    ocb.add_argument("--b", default=None)
+    ocb.add_argument("--out", default=None)
+    ocb.add_argument("--tol", type=float, default=0.1)
+    ocb.add_argument("--selftest", action="store_true",
+                     help="造两个 10 立方体做并/交/差，对解析体积")
+
+    lp = sub.add_parser("loop",
+                        help="实时闭环：估计器 / Lyapunov 参考 / 截止期 / 阶跃")
+    lp.add_argument("--ticks", type=int, default=300000)
+    lp.add_argument("--period", type=float, default=0.002)
+
+    gp = sub.add_parser("gpu", help="并行后端：逐位一致 + 实测加速比 + CUDA 探测")
+    gp.add_argument("--quick", action="store_true", help="少核、跳过扫描")
+
+    fa = sub.add_parser("fiveaxis",
+                        help="五轴：扫掠体碰撞 vs 高度场，以及转台-转台逆解")
 
     idf = sub.add_parser("identifiable",
                          help="哪些常数能被定住、哪些不能（判据 + 实测数字）")
@@ -355,6 +393,57 @@ def main(argv=None):
         print("那一步这个仓没有，所以它不声称能解任意零件。")
         return 0
 
+    if ns.cmd == "tet":
+        from . import voxel as vx
+        from . import tetmesh as tm
+        from . import fem3d as f3m
+        print("实体 -> 四面体网格（体素化 + 边界回贴 + Kuhn 六分）。")
+        print("实体由 voxel 的区间表示给出：布尔是区间算术，没有曲面求交。")
+        print()
+        print("一 体积与拓扑（判据在网格之外：解析体积、欧拉示性数）")
+        print("  %-14s %-6s %-7s %-9s %-7s %-7s %s"
+              % ("件", "h", "四面体", "体积误差", "欧拉", "负体积", "回贴/退回"))
+        parts = (("长方体 10^3", vx.Box(0, 10, 0, 10, 0, 10)),
+                 ("球 r=5", vx.Sphere(0, 0, 0, 5)),
+                 ("带孔板 40x20x6",
+                  vx.Diff(vx.Box(0, 40, 0, 20, 0, 6), vx.CylinderZ(20, 10, 5, 0, 6))))
+        for name, sh in parts:
+            for h in (2.5, 1.25):
+                r = tm.check(sh, h=h)
+                err = r["volume_err"]
+                if err is None:
+                    ref = vx.volume_ref(sh, n=80)
+                    err = abs(r["volume"] - ref) / ref
+                print("  %-14s %-6.2f %-7d %-9.2e %-7d %-7d %d/%d"
+                      % (name, h, r["tets"], err, r["euler"], r["negative"],
+                         r["projected"], r["reverted"]))
+        print("  欧拉示性数 V-E+F-T：实心件为 1，带一个通孔为 0 —— 孔丢了这一列会变回 1。")
+        print()
+        print("二 单元（TET4 常应变 / TET10 二次）")
+        for order in (1, 2):
+            pt = f3m.patch_test_tet(h=0.5, order=order)
+            rt = f3m.rotation_test_tet(order)
+            nl = f3m.rigid_body_nullity_tet(order)
+            print("  %-5s  分片 %.1e  刚体转动 %.1e  零空间 %d  -> %s"
+                  % ("TET4" if order == 1 else "TET10",
+                     pt["max_err"], rt["rel"], nl["nullity"],
+                     "过" if (pt["ok"] and rt["ok"] and nl["nullity"] == 6) else "不过"))
+        print("  刚体转动那一条专门抓 Jacobian 转置：分片试验用对称应变，")
+        print("  转置后对称部分不变，抓不到；这一条抓到了 40 倍的刚度偏差。")
+        print()
+        print("三 悬臂梁：四面体网格 vs 六面体网格 vs 梁理论 PL^3/(3EI)")
+        print("  %-6s %-9s %-9s %-9s %s" % ("h", "hex8", "TET10", "TET4", "hex 与 TET10 之差"))
+        for h in ns.h:
+            r = f3m.tet_vs_hex(h=h)
+            print("  %-6.2f %-9.4f %-9.4f %-9.4f %.4f"
+                  % (h, r["hex"], r["tet10"], r["tet4"], r["hex_vs_tet10"]))
+        print("  TET4 明显小于 1 是常应变单元在纯弯下锁死，不是 bug；")
+        print("  TET10 每条边加中点，弯曲就活了。两个都留着，用途不同。")
+        print("  h 必须整除尺寸：截面 8 厚、h=2.5 时体素只有 3 格 = 7.5，"
+              "惯性矩按 (7.5/8)^3 掉，挠度比会虚高 14% ——")
+        print("  那不是单元的问题，是网格把几何改了。h=2.0 就回到 1.015。")
+        return 0
+
     if ns.cmd == "beam":
         from . import beam as bm2
         print("二维框架单元（轴向 + 欧拉-伯努利弯曲）。参照是四条解析解。")
@@ -379,6 +468,200 @@ def main(argv=None):
             sh = bm2.shear_note(L=L, h=h)
             print("  L/h=%.0f 时剪切挠度占弯曲挠度的 %.1f%%  —— %s"
                   % (L / h, sh["ratio"] * 100, sh["note"]))
+        return 0
+
+    if ns.cmd == "shell":
+        from . import shell as shm
+        print("MITC4 平板壳（6 自由度/节点：u v w θx θy θz）。")
+        print("assumed shear strain 取边中点采样再插值 —— 直接算剪切会锁死。")
+        print()
+        print("一 简支板中心挠度，对 Navier 解 0.00406 q a^4 / D")
+        for n in ns.n:
+            r = shm.simply_supported(n=n)
+            print("  n=%-3d %.4f  相对误差 %+.2e" % (n, r["ratio"], r["ratio"] - 1.0))
+        print("  从下面收敛（0.978 -> 1.001），不是从上面 —— 位移型单元只会偏刚。")
+        print()
+        print("二 固支板中心挠度，对 0.00126 q a^4 / D")
+        for n in ns.n:
+            r = shm.clamped(n=n)
+            print("  n=%-3d %.4f  相对误差 %+.2e" % (n, r["ratio"], r["ratio"] - 1.0))
+        print()
+        print("三 膜：单轴拉伸必须精确，泊松收缩不能被约束掉")
+        m = shm.membrane_tension()
+        print("  u 相对误差 %.1e   v 相对误差 %.1e"
+              % (m["u_rel"], m["v_rel"]))
+        print("  只钉一个节点就够：把整条边 v 钉住会把横向收缩压掉一半，")
+        print("  而 u 仍然是精确的 —— 只看 u 这个错永远不暴露。")
+        rm = shm.rigid_modes()
+        print("  单元零空间 %d（必须 6）；钻转罚项没把刚体转动杀掉。"
+              % rm["nullity"])
+        print()
+        print("四 薄极限（t 越来越薄，剪切不能锁死）")
+        for r in shm.thin_limit(n=max(ns.n)):
+            print("  t/a=%.4f  挠度比 %.4f" % (r["t_over_a"], r["ratio"]))
+        print("  薄板理论给 1；MITC4 在 t/a=1e-3 时仍然是 1 附近，"
+              "普通等参单元这时候会掉到 0.0x。")
+        return 0
+
+    if ns.cmd == "nonlinear":
+        from . import nonlinear as nlm
+        print("非线性：几何对弹性线，材料对双线性硬化闭式解。")
+        print()
+        print("一 悬臂梁端部纯力偶 -> 精确解是半径 R=EI/M 的圆弧")
+        print("  %-6s %-4s %-11s %-11s %s"
+              % ("turn", "n", "v 误差", "u 误差", "线性理论差"))
+        for turn in ns.turn:
+            for n in (10, 20, 40):
+                r = nlm.elastica_end_moment(n=n, turn=turn, steps=8)
+                print("  %-6.2f %-4d %-11.2e %-11.2e %5.1f%%"
+                      % (turn, n, r["v_rel_err"], r["u_rel_err"],
+                         r["linear_rel_err"] * 100))
+        print("  turn=pi/2 时线性理论差 23% —— 这个算例能区分真非线性和"
+              "「把线性解多迭代几遍」。")
+        print("  u 是**位移** R sin(L/R)-L，不是位置 R sin(L/R)："
+              "拿位置去比会差 157%。")
+        h = nlm.elastica_end_moment(n=20, turn=ns.turn[-1], steps=8)["history"]
+        tail = [v for v in h[-1] if v > 0][-5:]
+        print("  残差历史（n=20，最后一个载荷步）：%s"
+              % "  ".join("%.2e" % v for v in tail))
+        print("  相邻比值：%s —— 比值本身在变大就是二阶；切线错的话"
+              "每步只降一个常数倍。"
+              % "  ".join("%.0f" % (tail[i] / tail[i + 1])
+                          for i in range(len(tail) - 1)))
+        print()
+        print("二 客观性：整体刚体转动下内力必须为零")
+        o = nlm.objectivity()
+        print("  最大内力 / 参考量 = %.1e  -> %s"
+              % (o["rel"], "过" if o["ok"] else "不过"))
+        print()
+        print("三 材料非线性：单轴双线性硬化杆（返回映射）")
+        r = nlm.plastic_bar_check()
+        print("  最大相对误差 %.1e，屈服前斜率 %.1f（应为 E），"
+              "屈服后斜率 %.2f（应为 EH/(E+H) = %.2f）"
+              % (r["max_rel_err"], r["slope_pre"], r["slope_post"],
+                 r["want_post"] if "want_post" in r else
+                 210000.0 * 2000.0 / (210000.0 + 2000.0)))
+        return 0
+
+    if ns.cmd == "csg":
+        from . import csg as csm
+        print("纯 Python BSP 布尔。判据拆两条，因为它们回答不同的问题：")
+        print("  体积   布尔到底做没做布尔（对解析体积）")
+        print("  裂边   结果网格能不能给下游用（对流形性）")
+        print()
+        r = csm.check()
+        print("一 轴对齐盒体（三组都有闭式答案）")
+        for row in r["rows"]:
+            print("  %-10s 解析 %9.3f  实得 %9.3f  相对差 %.1e"
+                  % (row["op"], row["want"], row["got"], row["rel_err"]))
+        print()
+        print("二 带通孔的板（孔是 n 棱柱，参照是棱柱的解析体积）")
+        print("  %-5s %-15s %-15s %-10s %-7s %s"
+              % ("n", "解析体积", "实得", "相对差", "裂边", "流形"))
+        for n in ns.n:
+            d = csm.check()["drilled"].get(n)
+            if d is None:
+                plate = csm.box(0, 40, 0, 20, 0, 6)
+                d = csm.subtract(plate, csm.prism(20, 10, 5, -1, 7, n=n))
+                import math as _m
+                want = 40 * 20 * 6 - 0.5 * n * 25 * _m.sin(2 * _m.pi / n) * 6
+                t = csm.topology(d)
+                d = {"want": want, "got": csm.volume(d),
+                     "rel_err": abs(csm.volume(d) - want) / want,
+                     "edges_bad": t["edges_bad"], "manifold": t["manifold"]}
+            print("  %-5d %-15.6f %-15.6f %-10.1e %-7d %s"
+                  % (n, d["want"], d["got"], d["rel_err"], d["edges_bad"],
+                     "是" if d["manifold"] else "不是"))
+        print()
+        print("  体积精确到 1e-16，但裂边随棱数线性增长 —— BSP 在曲面逼近上")
+        print("  会留 T 型接点。这不是能调掉的参数，是这条路的边界；")
+        print("  要无裂边的结果走 OCC（craftagent ocbool）。")
+        return 0
+
+    if ns.cmd == "ocbool":
+        from . import booleans as bm3
+        st = bm3.status()
+        if not st["available"]:
+            print("OpenCASCADE 适配器：这一台没有能 import OCP 的解释器。")
+            print("  原因：%s" % st["why"])
+            print("  怎么装：%s" % st["how_to_fix"])
+            print("  试过：%s" % ", ".join(st.get("tried", [])))
+            print("  （craftagent 的其余部分不依赖它 —— 它是可选适配器，"
+                  "没装时 csg 那条纯 Python 的路径照常工作。）")
+            return 1
+        if ns.selftest or not ns.a or not ns.b:
+            r = bm3.selftest()
+            print("后端：%s" % r.get("python"))
+            if r.get("verified_here"):
+                for name, row in r["ops"].items():
+                    print("  %-8s 解析 %9.3f  实得 %12.6f  相对差 %.1e  "
+                          "有效 %s  实体 %d  -> %s"
+                          % (name, row["want"], row["got"], row["rel"],
+                             row["valid"], row["solids"],
+                             "过" if row["ok"] else "不过"))
+                print("  两个 10 立方体偏移 5：并 1875 / 交 125 / 差 875，"
+                      "三个数都有闭式。")
+                return 0 if r["ok"] else 1
+            print("  数值验收没做：%s" % (r.get("why") or r.get("note")))
+            return 1
+        r = bm3.boolean(ns.op, ns.a, ns.b, out_step=ns.out, tol=ns.tol)
+        print(json.dumps(r, ensure_ascii=False, indent=2))
+        return 0 if r.get("ok") else 1
+
+    if ns.cmd == "loop":
+        from . import closedloop as clm
+        out = clm.check(verbose=True)
+        ok = (out["filter"]["ok"] and out["loop"]["ok"] and out["deadline"]["ok"]
+              and out["step"]["ok"])
+        print()
+        print("  闭环在什么条件下**不如**开环（Lyapunov 精确算的分界）：")
+        for row in out["cross"]["by_noise"]:
+            flag = "赚" if row["ratio"] < 1.0 else "亏"
+            print("    传感器噪声 %.2f  ->  闭环/开环 = %7.3f  %s"
+                  % (row["sigma_v"], row["ratio"], flag))
+        print("  传感器越脏、漂移越慢，积分补偿越是把噪声积分进补偿量。")
+        print("  「闭环一定更好」是错的；这一层给的是分界，不是口号。")
+        print()
+        print("  %s" % ("全部通过" if ok else "有判据没过"))
+        return 0 if ok else 1
+
+    if ns.cmd == "gpu":
+        from . import gpu as gpum
+        r = gpum.check(verbose=True, full=not ns.quick)
+        print()
+        print("  %s" % ("全部通过" if r["ok"] else "有判据没过"))
+        return 0 if r["ok"] else 1
+
+    if ns.cmd == "fiveaxis":
+        from . import fiveaxis as fxm
+        print("五轴：刀轴一倾斜，高度场模型就少了一个维度。")
+        print()
+        r = fxm.compare_models()
+        print("一 三轴退化（刀轴竖直，两条基线必须逐条一致）")
+        print("  %d 个三轴姿态，不一致 %d 个"
+              % (len(r["three_axis"]),
+                 sum(1 for row in r["three_axis"] if not row["agree"])))
+        print()
+        print("二 反例：高度场说安全、扫掠体说撞")
+        print("  共 %d 个姿态不一致，其中高度场漏掉 %d 个、误报 %d 个"
+              % (r["n_disagree"], len(r["missed_by_height"]),
+                 len(r["false_alarm_by_height"])))
+        for row in r["missed_by_height"][:3]:
+            tip, ax = row["pose"]
+            print("    倾角 %4.1f°  刀尖 %s  刀轴 (%.3f, %.3f, %.3f)  "
+                  "最小间隙 %.2f  规则 %s"
+                  % (row["tilt_deg"], tip, ax[0], ax[1], ax[2],
+                     row["min_clearance"], ",".join(row["swept_rules"])))
+        print("  高度场只看 (x,y) 那一点的高度；刀杆斜着扎进侧壁时，")
+        print("  刀尖在毛坯上方、(x,y) 也在外面，它给的是「安全」。")
+        print("  这不是精度问题，是模型缺了一个维度。")
+        print()
+        print("三 逆解（转台-转台：A 绕 x，C 绕 z）")
+        k = fxm.ik_roundtrip()
+        print("  %d 个方向，最坏往返残差 %.2e，奇异位形 %d 个（必须报出来）"
+              % (k["samples"], k["worst"], k["singular"]))
+        print("  刀轴竖直时 C 完全不定；随便给一个角度会让后处理看起来正常，")
+        print("  实际在机床上是一记甩刀。")
         return 0
 
     if ns.cmd == "identifiable":

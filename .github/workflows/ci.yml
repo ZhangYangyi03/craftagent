@@ -59,6 +59,24 @@ jobs:
           python -m craftagent fem3d
           python -m craftagent beam
 
+      # 同上，这一批是这一版新加的五层。每一层都把"判据对着什么"印出来：
+      # 网格对解析体积与欧拉示性数、壳对板理论、非线性对弹性线、
+      # 五轴对三轴退化与反例、布尔对棱柱解析体积。
+      - name: Mesh, shell, nonlinear, 5-axis and boolean kernels print their own error
+        run: |
+          python -m craftagent tet
+          python -m craftagent shell --n 4 8
+          python -m craftagent nonlinear
+          python -m craftagent fiveaxis
+          python -m craftagent csg
+
+      # 闭环与并行：截止期那一条用虚拟时钟，所以它是确定的；并行那一条
+      # 只断言逐位相等，加速比如实打印（小问题会小于 1，那是对的）。
+      - name: Closed loop and parallel backends
+        run: |
+          python -m craftagent loop --ticks 120000
+          python -m craftagent gpu --quick
+
   # CAD 这一层单独一个 job，装 OpenCASCADE（70 MB，Linux / 52 MB，
   # Windows）。因为它装在 test job 里等于给四个矩阵格各加一刻钟，
   # 而它要验的不是"在四个平台上都能跑"，是"读进来的那块零件对不对"。
@@ -87,3 +105,10 @@ jobs:
         run: |
           python -m craftagent cad
           python -m unittest tests.test_cad -v
+      # 布尔这一层在别处只能验"缺 OCP 时它说不"。这里装了 OCP，所以
+      # 真的造两个 10 立方体做并/交/差，对 1875 / 125 / 875 三个闭式值。
+      # 返回码非 0 说明布尔本身或有效性检查没过 —— 不许降级成 skip。
+      - name: OCC booleans must actually run here, not report absence
+        run: |
+          python -m craftagent ocbool --selftest
+          python -m unittest tests.test_booleans -v

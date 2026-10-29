@@ -345,3 +345,353 @@ def sparse_vs_dense(nx=4, ny=2, nz=2, L=10.0, b=2.0, h=2.0, E=1000.0, nu=0.3, P=
     diff = max(abs(a - b2) for a, b2 in zip(sp["x"], dn)) / scale
     return {"rel_diff": diff, "sparse_converged": sp["converged"],
             "dof": ndof, "pcg_iters": sp["iters"]}
+
+
+# ---------------------------------------------------------------- 四面体单元
+#
+# 上面那一整块只认六面体，而六面体只能网格化长方体。要解一个真实零件，
+# 缺的从来不是单元而是网格（见 tetmesh.py）。这里补上四面体单元，让
+# "网格化了的东西"能直接进来求解。
+#
+# 线性四面体（TET4）是常应变单元：B 是常数矩阵，刚度矩阵一次算完。
+# 它在纯弯下**严重**锁死 —— 常应变表示不了弯曲应变，加细之前误差可以
+# 到 60% 以上。二次四面体（TET10）每条边加中点，B 是坐标的线性函数，
+# 弯曲就活了。代价是节点数翻几倍、装配慢一个量级。两个都留着：
+# TET4 用来快速验几何与装配，TET10 用来出数。
+
+def _tet_grad_L(coords):
+    """四个体积坐标的梯度 + 体积。
+
+    令 v_j = p_{j+1} - p_1（j=1,2,3），J 以 v_j 为**列**。则
+        [L2,L3,L4]^T = J^{-1} (x - p1)
+    所以 grad L2/L3/L4 就是 J^{-1} 的三行，grad L1 = -(三者之和)。
+
+    这里踩过一个很隐蔽的坑，值得写下来：第一版把 v 按坐标方向打包
+    （`v[i] = (p2[i]-p1[i], p3[i]-p1[i], p4[i]-p1[i])`），拼出来的矩阵
+    其实是 J 的**转置**，于是算出的梯度是 J^{-ᵀ} 的行，也就是转置过的
+    梯度。它绕过了所有常规检查：
+
+        体积     det(J^T) = det(J)，对的
+        零空间   6，对的
+        分片试验 通过 —— 因为测试用的是**对称**应变张量，
+                 转置后对称部分不变
+        单元能量 与解析值一致 —— 因为对照用的 B 是同一个错 B
+
+    只有弯曲问题能暴露它：弯曲的位移梯度不对称。实测同一根梁，六面体
+    给 0.883（梁理论），四面体给 0.022 —— 刚度高了 40 倍。所以验收里
+    加了一条**纯转动**：u = ω × x 的应变必须为零、内力必须为零。
+    转置一出现这一条立刻红，而对称应变的分片试验永远发现不了。
+    """
+    p1, p2, p3, p4 = coords
+    v = [(p2[i] - p1[i], p3[i] - p1[i], p4[i] - p1[i]) for i in range(3)]
+    # 现在 v[i] 是第 i 个坐标方向上的三个差分，即 J 的第 i 行
+    a, b, c = v[0]
+    d, e, f = v[1]
+    g, h, i2 = v[2]
+    det = a * (e * i2 - f * h) - b * (d * i2 - f * g) + c * (d * h - e * g)
+    if det == 0.0:
+        raise ValueError("四面体退化（体积为零）")
+    inv = [[(e * i2 - f * h) / det, (c * h - b * i2) / det, (b * f - c * e) / det],
+           [(f * g - d * i2) / det, (a * i2 - c * g) / det, (c * d - a * f) / det],
+           [(d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det]]
+    gL = [None] * 4
+    gL[1] = tuple(inv[0])
+    gL[2] = tuple(inv[1])
+    gL[3] = tuple(inv[2])
+    gL[0] = (-(gL[1][0] + gL[2][0] + gL[3][0]),
+             -(gL[1][1] + gL[2][1] + gL[3][1]),
+             -(gL[1][2] + gL[2][2] + gL[3][2]))
+    return gL, abs(det) / 6.0
+
+
+def _bt_db(B, DB, n):
+    """B^T D B，n 为节点数。每列只有 3 个非零（正应变一行 + 两个剪应变行），
+    所以内层求和只跑 3 次而不是 6 次。"""
+    Ke = [[0.0] * (3 * n) for _ in range(3 * n)]
+    cols = []
+    for a in range(3 * n):
+        cols.append([(r, B[r][a]) for r in range(6) if B[r][a]])
+    for a in range(3 * n):
+        ca = cols[a]
+        if not ca:
+            continue
+        row = Ke[a]
+        for b in range(3 * n):
+            s = 0.0
+            for r, v in ca:
+                s += v * DB[r][b]
+            if s:
+                row[b] += s
+    return Ke
+
+
+def _bmat(dN, n):
+    """dN: n 个 (dx,dy,dz) -> 6x(3n) 应变-位移矩阵。"""
+    B = [[0.0] * (3 * n) for _ in range(6)]
+    for k in range(n):
+        dx, dy, dz = dN[k]
+        B[0][3 * k] = dx
+        B[1][3 * k + 1] = dy
+        B[2][3 * k + 2] = dz
+        B[3][3 * k] = dy
+        B[3][3 * k + 1] = dx
+        B[4][3 * k + 1] = dz
+        B[4][3 * k + 2] = dy
+        B[5][3 * k] = dz
+        B[5][3 * k + 2] = dx
+    return B
+
+
+def tet4_stiffness(coords, D):
+    """12x12 常应变四面体刚度矩阵。"""
+    gL, V = _tet_grad_L(coords)
+    B = _bmat(gL, 4)
+    DB = [[sum(D[r][c] * B[c][b] for c in range(6)) for b in range(12)]
+          for r in range(6)]
+    Ke = _bt_db(B, DB, 4)
+    for a in range(12):
+        for b in range(12):
+            Ke[a][b] *= V
+    return Ke
+
+
+# 二次四面体的四个积分点（权重各 1/4，对二次多项式精确）
+_T10_A = 0.5854101966249685
+_T10_B = 0.1381966011250105
+_T10_GP = ((_T10_A, _T10_B, _T10_B, _T10_B),
+           (_T10_B, _T10_A, _T10_B, _T10_B),
+           (_T10_B, _T10_B, _T10_A, _T10_B),
+           (_T10_B, _T10_B, _T10_B, _T10_A))
+
+
+def _tet10_shape(L):
+    """10 个形函数与对 L 的偏导。
+
+    节点序：1-4 顶点，5=(1,2) 6=(2,3) 7=(3,1) 8=(1,4) 9=(2,4) 10=(3,4)。
+    与 tetmesh.tet10 生成的中点顺序一致 —— 这两处对不上，装配出来的
+    矩阵仍然对称正定，解出来是一个位移场，只是它是另一个问题的解。
+    """
+    L1, L2, L3, L4 = L
+    N = (L1 * (2 * L1 - 1), L2 * (2 * L2 - 1), L3 * (2 * L3 - 1), L4 * (2 * L4 - 1),
+         4 * L1 * L2, 4 * L2 * L3, 4 * L3 * L1, 4 * L1 * L4, 4 * L2 * L4, 4 * L3 * L4)
+    d = [[0.0] * 4 for _ in range(10)]
+    d[0][0] = 4 * L1 - 1
+    d[1][1] = 4 * L2 - 1
+    d[2][2] = 4 * L3 - 1
+    d[3][3] = 4 * L4 - 1
+    d[4][0], d[4][1] = 4 * L2, 4 * L1
+    d[5][1], d[5][2] = 4 * L3, 4 * L2
+    d[6][2], d[6][0] = 4 * L1, 4 * L3
+    d[7][0], d[7][3] = 4 * L4, 4 * L1
+    d[8][1], d[8][3] = 4 * L4, 4 * L2
+    d[9][2], d[9][3] = 4 * L4, 4 * L3
+    return N, d
+
+
+def tet10_stiffness(coords, D):
+    """30x30 二次四面体刚度矩阵。coords 为 10 个点，顺序同上。"""
+    gL, V = _tet_grad_L(coords[:4])
+    Ke = [[0.0] * 30 for _ in range(30)]
+    w = V / 4.0
+    for gp in _T10_GP:
+        _N, dNdl = _tet10_shape(gp)
+        dN = []
+        for k in range(10):
+            dN.append(tuple(sum(dNdl[k][i] * gL[i][c] for i in range(4))
+                            for c in range(3)))
+        B = _bmat(dN, 10)
+        DB = [[sum(D[r][c] * B[c][b] for c in range(6)) for b in range(30)]
+              for r in range(6)]
+        Kg = _bt_db(B, DB, 10)
+        for a in range(30):
+            for b in range(30):
+                Ke[a][b] += Kg[a][b] * w
+    return Ke
+
+
+def assemble_tet(mesh, D, order=1):
+    """四面体网格装配。order=1 用 TET4，order=2 用 TET10。"""
+    if order == 1:
+        nodes, tets = mesh["nodes"], mesh["tets"]
+        A = sparse.zeros(3 * len(nodes))
+        for e in tets:
+            Ke = tet4_stiffness([nodes[n] for n in e], D)
+            idx = [3 * n + c for n in e for c in range(3)]
+            sparse.add_block(A, idx, Ke)
+        return A, nodes, tets
+    from . import tetmesh
+    m10 = tetmesh.tet10(mesh)
+    nodes, tets = m10["nodes"], m10["tets"]
+    A = sparse.zeros(3 * len(nodes))
+    for e in tets:
+        Ke = tet10_stiffness([nodes[n] for n in e], D)
+        idx = [3 * n + c for n in e for c in range(3)]
+        sparse.add_block(A, idx, Ke)
+    return A, nodes, tets
+
+
+def _box_beam(nx, ny, nz, L, b, h):
+    """结构化箱体 -> 直接用 box_mesh（六面体路径的参照）。"""
+    return box_mesh(nx, ny, nz, L, b, h)
+
+
+def cantilever_tet(h=4.0, L=40.0, b=8.0, hh=8.0, E=210000.0, nu=0.3, P=100.0,
+                   order=2, tol=1e-10):
+    """同一个悬臂梁，改用**网格化的四面体**来解。
+
+    这是"能不能解真实零件"的分界线：六面体路径只认长方体，四面体路径
+    认的是 `voxel.Shape`。这里的形状恰好是个长方体，所以可以和
+    `cantilever`（六面体）对着看 —— 两条完全不同的代码路径必须收敛到
+    同一个梁理论值。对不上就说明四面体单元或装配错了，而不是"四面体
+    天生差一点"。
+    """
+    from . import voxel, tetmesh
+    shape = voxel.Box(0.0, L, 0.0, b, 0.0, hh)
+    m = tetmesh.build(shape, h)
+    D = D_isotropic(E, nu)
+    K, nodes, tets = assemble_tet(m, D, order=order)
+    ndof = 3 * len(nodes)
+    f = [0.0] * ndof
+    tip = [n for n, p in enumerate(nodes) if p[0] >= L - 1e-9]
+    root = [n for n, p in enumerate(nodes) if p[0] <= 1e-9]
+    if not tip or not root:
+        raise ValueError("网格没覆盖到两端：h 太大")
+    per = P / len(tip)
+    for n in tip:
+        f[3 * n + 2] = -per
+    fixed = {}
+    for n in root:
+        for c in range(3):
+            fixed[3 * n + c] = 0.0
+    bvec = sparse.apply_dirichlet(K, f, fixed)
+    res = sparse.pcg(K, bvec, tol=tol, maxit=40000)
+    I = b * hh ** 3 / 12.0
+    theory = P * L ** 3 / (3.0 * E * I)
+    uz = [-res["x"][3 * n + 2] for n in tip]
+    got = sum(uz) / len(uz)
+    return {"ratio": got / theory, "tip": got, "theory": theory,
+            "order": order, "h": h, "tets": len(tets), "nodes": len(nodes),
+            "dof": ndof, "converged": res["converged"],
+            "rel_res": res["rel_res"], "pcg_iters": res["iters"],
+            "reverted": m["reverted"], "volume_err": None}
+
+
+def patch_test_tet(h=0.5, E=1000.0, nu=0.3, order=1,
+                   strain=(1e-3, -4e-4, 2e-4, 3e-4, 0.0, 0.0)):
+    """四面体网格上的分片试验。
+
+    线性位移场必须被**精确**复现。TET4 和 TET10 都能表示线性场，所以
+    两种单元都必须过 —— 这一条抓的是 B 矩阵、雅可比、节点顺序，与
+    单元阶次无关。过不了就不是精度问题。
+    """
+    from . import voxel, tetmesh
+    shape = voxel.Box(0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+    m = tetmesh.build(shape, h, project=False)
+    D = D_isotropic(E, nu)
+    K, nodes, tets = assemble_tet(m, D, order=order)
+    exx, eyy, ezz, gxy, gyz, gzx = strain
+    A = [[exx, gxy / 2.0, gzx / 2.0],
+         [gxy / 2.0, eyy, gyz / 2.0],
+         [gzx / 2.0, gyz / 2.0, ezz]]
+
+    def u(p):
+        return tuple(sum(A[i][j] * p[j] for j in range(3)) for i in range(3))
+
+    f = [0.0] * (3 * len(nodes))
+    fixed = {}
+    for n, p in enumerate(nodes):
+        if (p[0] < 1e-9 or p[0] > 1 - 1e-9 or p[1] < 1e-9
+                or p[1] > 1 - 1e-9 or p[2] < 1e-9 or p[2] > 1 - 1e-9):
+            for c in range(3):
+                fixed[3 * n + c] = u(p)[c]
+    bvec = sparse.apply_dirichlet(K, f, fixed)
+    res = sparse.pcg(K, bvec, tol=1e-12, maxit=40000)
+    err = 0.0
+    ref = 0.0
+    for n, p in enumerate(nodes):
+        want = u(p)
+        for c in range(3):
+            err = max(err, abs(res["x"][3 * n + c] - want[c]))
+            ref = max(ref, abs(want[c]))
+    return {"ok": res["converged"] and err <= 1e-9 * max(ref, 1.0),
+            "order": order, "max_err": err, "rel_err": err / max(ref, 1e-30),
+            "converged": res["converged"], "nodes": len(nodes),
+            "pcg_iters": res["iters"]}
+
+
+def rigid_body_nullity_tet(order=1, E=1000.0, nu=0.3):
+    """单个四面体单元的零空间维数，必须是 6。
+
+    TET10 是 30 个自由度，TET4 是 12 个。两者都只能有 6 个刚体模态；
+    多一个说明单元有沙漏（本构被积分点漏掉），少一个说明被锁住。
+    """
+    from . import tetmesh
+    p = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)]
+    D = D_isotropic(E, nu)
+    if order == 1:
+        Ke = tet4_stiffness(p, D)
+        n = 12
+    else:
+        mids = [(0.5 * (p[a][i] + p[b][i]) for i in range(3))
+                for a, b in ((0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3))]
+        Ke = tet10_stiffness(p + [tuple(m) for m in mids], D)
+        n = 30
+    r = _rank(Ke)
+    return {"rank": r, "nullity": n - r, "size": n, "order": order}
+
+
+def tet_vs_hex(h=4.0, L=40.0, b=8.0, hh=8.0, E=210000.0, nu=0.3, P=100.0):
+    """四面体网格 vs 六面体网格，同一个梁、同一套材料、同一个载荷。
+
+    两条路径唯一的共同点是梁理论。六面体路径自己在 `cantilever` 里
+    已经验过（随细化从下面逼近 1），所以这里的判据是：四面体（TET10）
+    与六面体（hex8）在**同一格距**下比值相差不超过 15%，且都小于 1.2
+    （大于 1.2 说明解出来的位移比理论大，那通常是边界条件给松了）。
+    """
+    hexa = cantilever(nx=int(round(L / h)), ny=int(round(b / h)),
+                      nz=int(round(hh / h)), L=L, b=b, h=hh, E=E, nu=nu, P=P)
+    t10 = cantilever_tet(h=h, L=L, b=b, hh=hh, E=E, nu=nu, P=P, order=2)
+    t4 = cantilever_tet(h=h, L=L, b=b, hh=hh, E=E, nu=nu, P=P, order=1)
+    return {"hex": hexa["ratio"], "tet10": t10["ratio"], "tet4": t4["ratio"],
+            "hex_vs_tet10": abs(hexa["ratio"] - t10["ratio"]),
+            "theory": hexa["theory"],
+            "converged": hexa["converged"] and t10["converged"] and t4["converged"],
+            "tets": t10["tets"], "dof": t10["dof"]}
+
+
+def rotation_test_tet(order=1, E=1000.0, nu=0.3, omega=(1.0, -0.7, 0.4)):
+    """纯刚体转动：u = omega × x 的应变必须为零，单元内力必须为零。
+
+    为什么单独立这一条：分片试验用的是**对称**应变张量，把位移梯度转置
+    之后对称部分不变，所以它**发现不了转置**。刚体转动的位移梯度是反对称
+    的，转置等于取负 —— 一旦把 J 和 J^T 搞混，这里的应变会变成 2ω 而不是
+    零。实测这个坑让四面体梁的刚度高了 40 倍，而分片试验一路绿灯。
+    """
+    p = [(0.0, 0.0, 0.0), (0.9, 0.1, 0.0), (0.2, 1.1, 0.05), (0.05, 0.15, 0.8)]
+    D = D_isotropic(E, nu)
+    if order == 1:
+        co = p
+        Ke = tet4_stiffness(co, D)
+        n = 4
+    else:
+        mids = [tuple(0.5 * (p[a][i] + p[b][i]) for i in range(3))
+                for a, b in ((0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3))]
+        co = p + [tuple(m) for m in mids]
+        Ke = tet10_stiffness(co, D)
+        n = 10
+    wx, wy, wz = omega
+
+    def u(q):
+        # omega × x
+        return (wy * q[2] - wz * q[1], wz * q[0] - wx * q[2], wx * q[1] - wy * q[0])
+
+    uu = []
+    for q in co:
+        uu.extend(u(q))
+    f = [sum(Ke[a][b] * uu[b] for b in range(3 * n)) for a in range(3 * n)]
+    scale = max(abs(v) for v in f) if any(f) else 1.0
+    # 用内力相对量级判断：正确时严格为 0（浮点噪声 ~1e-16）
+    ref = E * sum(abs(v) for v in uu) / n
+    return {"order": order, "max_force": max(abs(v) for v in f),
+            "rel": max(abs(v) for v in f) / (ref or 1.0),
+            "ok": max(abs(v) for v in f) <= 1e-10 * (ref or 1.0)}
