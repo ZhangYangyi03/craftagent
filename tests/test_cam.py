@@ -845,5 +845,60 @@ class TestCamClosedLoop(unittest.TestCase):
         self.assertIn('没有可切', str(cm.exception))
 
 
+class TestExactOffsetInToolpaths(unittest.TestCase):
+    """刀路可以走精确偏置（圆弧连接），而不只是逐点法向偏移。
+
+    两条路的差别不在"准不准"，在**能不能被检查**：近似偏置的角点离图纸线
+    是 7.07 而不是 5，而程序里没有任何一行说明这件事；精确偏置的每一点都
+    恰好 5，所以"这条刀路有没有过切"变成一道能算的题。
+
+    默认仍是近似：车间里的程序由控制器补角，而近似给出的程序更短。改默认
+    要重跑全部数值测试，那是另一件事，这里不偷偷改。
+    """
+
+    RECT = [(0, 0, 60, 0), (60, 0, 60, 40), (60, 40, 0, 40), (0, 40, 0, 0)]
+
+    def _plan(self, engine):
+        dr = drawing.read_dxf(_dxf_lines_only(self.RECT))
+        return cam.build(dr, material='P', tool=feeds.Tool(10.0, 3, 'carbide'),
+                         op='rough', ap_per_pass=1.5, offset='tool_radius',
+                         offset_engine=engine)
+
+    def test_engine_is_recorded_in_the_report(self):
+        self.assertEqual(self._plan('approx').meta['offsets'][0]['kind'],
+                         'point_normal_approx')
+        self.assertEqual(self._plan('exact').meta['offsets'][0]['kind'],
+                         'exact_offset')
+
+    def test_exact_engine_rounds_the_corner_instead_of_extending_it(self):
+        """近似偏置的角点在 (-5,-5)，离图纸线 7.07；精确偏置在那里是圆弧。"""
+        approx = self._plan('approx').text
+        exact = self._plan('exact').text
+        self.assertIn('X-5 Y-5', approx)
+        self.assertNotIn('X-5 Y-5', exact)
+        # 圆弧会把角切成很多小段，所以精确版的 G1 更多
+        self.assertGreater(exact.count('G1 X'), approx.count('G1 X'))
+
+    def test_switching_the_engine_does_not_change_the_gate_verdict(self):
+        """换偏置实现不能改变门的判决 —— 它只该改变刀路的形状。
+
+        这里断言的是"两边判决相同"，不是"两边都放行"：这块 60x40 的板配
+        默认压板、D10 刀，本来就撞 clamp2（刀心到 65，压板从 61 起）。
+        断言"都放行"会让这条测试变成在测夹具，而不是在测偏置。
+        """
+        from craftagent import gate_cnc
+        a = gate_cnc.check_text(self._plan('approx').text)
+        b = gate_cnc.check_text(self._plan('exact').text)
+        self.assertEqual(a.ok, b.ok, (a.reasons, b.reasons))
+
+    def test_unknown_engine_falls_back_to_approx_only_when_named_so(self):
+        """名字写错不能被当成 exact 悄悄放过 —— 那会让报告里的 kind 说谎。"""
+        with self.assertRaises(cam.CamError):
+            dr = drawing.read_dxf(_dxf_lines_only(self.RECT))
+            cam.build(dr, material='P', tool=feeds.Tool(10.0, 3, 'carbide'),
+                      op='rough', ap_per_pass=1.5, offset='tool_radius',
+                      offset_engine='exakt')
+
+
 if __name__ == '__main__':
     unittest.main()

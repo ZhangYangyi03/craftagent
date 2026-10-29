@@ -32,7 +32,8 @@ RULES = ('gcode_syntax', 'axis_limit', 'feed_limit', 'accel_limit',
 # "刀会不会撞到不是要切的东西"。分开列，是因为它们需要的是几何
 # （毛坯/压板/刀柄），前七条只需要指令和规划表。混在一起以后，
 # 想只跑前七条就得假装没有毛坯——那正是最容易骗自己的一步。
-COLLIDE_RULES = ('table_crash', 'clamp_crash', 'holder_crash', 'rapid_into_stock')
+COLLIDE_RULES = ('table_crash', 'clamp_crash', 'holder_side', 'holder_crash',
+                 'rapid_into_stock')
 ALL_RULES = RULES + COLLIDE_RULES
 
 

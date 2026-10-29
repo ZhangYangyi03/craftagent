@@ -301,7 +301,7 @@ def default_stock(dr, tool=None, ap_per_pass=1.0):
 def build(dr, material='P', tool=None, machine=None, stock=None,
           op='rough', ap_per_pass=1.0, safe_z=None, conservative=1.0,
           plan_ok=True, ramp_deg=0.0, offset='none', finish_allow=0.0,
-          pocket_stepover=None, clear_pockets=True):
+          pocket_stepover=None, clear_pockets=True, offset_engine='approx'):
     """把一张读出来的图纸变成一条程序。
 
     stock: (x0, y0, x1, y1, top_z, thickness)。给 None 时按轮廓包围盒 + 边距推。
@@ -332,6 +332,11 @@ def build(dr, material='P', tool=None, machine=None, stock=None,
     sx0, sy0, sx1, sy1, top_z, thick = stock
     if safe_z is None:
         safe_z = top_z + 5.0
+    if offset_engine not in ('approx', 'exact'):
+        # 名字写错不能被当成 approx 悄悄放过：报告里的 kind 会说谎，
+        # 而"报告说了是近似"正是这条路唯一的安全阀。
+        raise CamError('offset_engine 只能是 approx / exact，收到 %r'
+                       % (offset_engine,))
 
     # 排序：外层先、型腔后，同深度按面积从大到小。
     # 顺序写错的具体后果是：先切了小腔，再切外轮廓时件已经松了，
@@ -358,24 +363,43 @@ def build(dr, material='P', tool=None, machine=None, stock=None,
         # 用绕向来定方向是错的：DXF 里同一条型腔的绕向谁写的都有，
         # 而偏错方向是过切——件报废，程序每一条都合法。
         inward = -1.0 if c.role == 'inner' else 1.0
+
+        def _shift(pts, d):
+            """按 offset_engine 选偏置实现。两条路都必须说出自己是哪一条。"""
+            if offset_engine == 'exact':
+                from . import offset as off_mod
+                res = off_mod.offset_polygon(pts, d)
+                if not res['ok']:
+                    # 报出来，不硬凑：拓扑变了的轮廓（窄槽被腐蚀断）用一条
+                    # 闭合折线表示不了，凑出来的那条每一点距离都对、少一半。
+                    raise CamError('轮廓 %s 的精确偏置失败（%s，%d 个点，'
+                                   '删环 %d 次）—— 这条轮廓偏 %.2f 之后不再是'
+                                   '一条闭合曲线，改用 offset_engine=approx '
+                                   '或改刀径' % (c.layer, res['reason'],
+                                                 len(res['pts']),
+                                                 res['loops_removed'], d))
+                return res['pts'], 'exact_offset'
+            return offset_contour(pts, d, clamped_pts), 'point_normal_approx'
+
         if offset == 'none':
             path = list(c.pts)
             off = 0.0
+            kind = 'none'
         elif offset == 'tool_radius':
             off = tool.diameter_mm / 2.0
-            path = offset_contour(c.pts, inward * off, clamped_pts)
+            path, kind = _shift(c.pts, inward * off)
         elif offset == 'tool_radius_minus_allow':
             off = tool.diameter_mm / 2.0 - finish_allow
             if off <= 0:
                 raise CamError('留量 %.3f 不小于刀半径 %.3f，刀心在件里了'
                                % (finish_allow, tool.diameter_mm / 2.0))
-            path = offset_contour(c.pts, inward * off, clamped_pts)
+            path, kind = _shift(c.pts, inward * off)
         else:
             raise CamError('offset 只能是 none / tool_radius / tool_radius_minus_allow，'
                            '收到 %r' % (offset,))
         offsets_applied.append({'layer': c.layer, 'role': c.role,
                                 'dist': off, 'inward': inward < 0,
-                                'kind': 'point_normal_approx' if off else 'none',
+                                'kind': kind if off else 'none',
                                 'miter_clamped_vertices': clamped_pts})
         # 型腔要清腔：边界那一圈之外，中间还要一圈圈往里走，否则留柱子。
         # 清腔的每一圈都必须已经让到"刀心不出边界"的位置，所以

@@ -154,5 +154,69 @@ class TestCollisionRules(unittest.TestCase):
         self.assertLess(zlo, self.fx.stock.table_z)
 
 
+class TestHolderSide(unittest.TestCase):
+    """刀柄侧面那条规则：刀尖从压板旁边过去了，刀柄的脖子没有。
+
+    这条规则单独一组，因为它要同时满足三件事才成立，而少判任何一件都会
+    变成大量误报或大量漏报 —— 两种都比"没有这条规则"更糟：误报会让门
+    被绕过去，漏报会让人以为门管了这件事。
+    """
+
+    def setUp(self):
+        self.fx = collide.Fixture()
+        self.gate = gate_cnc.Gate(gate_cnc.Limits(), fixture=self.fx)
+
+    def test_rect_distance_is_zero_inside(self):
+        """点到压板矩形的距离在矩形内部必须是 0。
+
+        写成"到四条边取最小"的话，内部会得到一个正值，于是刀尖刚好压线
+        时反而不报 —— 那正是最需要它报的时候。
+        """
+        c = self.fx.clamps[0]
+        cx = (c.x0 + c.x1) / 2.0
+        cy = (c.y0 + c.y1) / 2.0
+        self.assertEqual(collide.rect_distance(cx, cy, c), 0.0)
+        self.assertAlmostEqual(collide.rect_distance(c.x1 + 6.0, cy, c), 6.0, places=9)
+        # 对角方向是 sqrt(6^2 + 6^2)，不是 6
+        self.assertAlmostEqual(
+            collide.rect_distance(c.x1 + 6.0, c.y1 + 6.0, c),
+            math.hypot(6.0, 6.0), places=9)
+
+    def test_deep_cut_near_a_clamp_is_refused_by_the_holder(self):
+        """切深 8 mm（刀柄底面正好到压板顶面），轴线离压板 6 mm，刀柄半径 15。"""
+        for name, text, want in collide.planted_faults(self.fx):
+            if want != 'holder_side':
+                continue
+            v = self.gate.check_text(text)
+            self.assertFalse(v.ok, name)
+            self.assertIn('holder_side', v.reasons, v.reasons)
+
+    def test_the_same_cut_one_millimetre_deep_is_allowed(self):
+        """同一个位置、同一台刀，只把切深从 8 改成 1 就必须放行。
+
+        这一条盯着"只看 x-y 不看 z"的写法 —— 那种写法会把车间里到处都是的
+        浅切全拒掉，而门看起来还是很严。
+        """
+        c = self.fx.clamps[0]
+        text = ('G21 G90\nM3 S8000\nG0 Z%.1f\nG0 X%.1f Y%.1f\n'
+                'G1 Z-1.0 F150\nG1 X%.1f F400\nG0 Z%.1f\nM5\n'
+                % (self.fx.safe_z(), c.x1 + 6.0, (c.y0 + c.y1) / 2.0,
+                   c.x1 + 9.0, self.fx.safe_z()))
+        v = self.gate.check_text(text)
+        self.assertTrue(v.ok, '%r %r' % (v.reasons, v.detail))
+
+    def test_a_thin_holder_disables_the_rule(self):
+        """刀柄半径小于轴线到压板的距离时不该报 —— 规则得真的用那个半径。"""
+        thin = collide.Fixture(tool=collide.Tool(diameter=6.0, stickout=20.0,
+                                                 holder_diameter=8.0))
+        gate = gate_cnc.Gate(gate_cnc.Limits(), fixture=thin)
+        for name, text, want in collide.planted_faults(thin):
+            if want != 'holder_side':
+                continue
+            v = gate.check_text(text)
+            self.assertTrue(v.ok, '%s 被 %r 拦下，但刀柄只有 8 mm 粗'
+                            % (name, v.reasons))
+
+
 if __name__ == '__main__':
     unittest.main()

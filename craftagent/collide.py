@@ -129,6 +129,18 @@ class Fixture(object):
 
 
 # --------------------------------------------------------------- 采样
+def rect_distance(x, y, rect):
+    """点到矩形（压板在 x-y 上的投影）的距离。落在里面时为 0。
+
+    写成"到四条边的距离取最小"是错的：那样矩形内部会得到一个正值，
+    而内部本来就该是 0，于是"刀柄扫到压板边缘"这一条在刀尖刚好压线时
+    反而不报 —— 那正是最需要它报的时候。
+    """
+    dx = max(rect.x0 - x, 0.0, x - rect.x1)
+    dy = max(rect.y0 - y, 0.0, y - rect.y1)
+    return math.hypot(dx, dy)
+
+
 def sample_seg(seg, step=0.5, max_pts=4000):
     """把一段（直线或圆弧）采样成点列，端点一定在里面。
 
@@ -204,12 +216,10 @@ def check(segs, fixture, eps=1e-9):
         # 先就报了，那条分支永远轮不到。留着它只会让人以为门管了四件事
         # 而实际只管了三件，所以删掉。
         #
-        # 真要区分"刀柄蹭到压板侧面而刀尖没进"，得把刀柄半径算进 x-y：
-        # 刀尖在压板之外两个身位、刀柄的粗脖子却扫到了压板边缘。
-        # 那是真几何，这个文件没实现，所以它不声称有这条规则。
-        #
-        # 刀柄真正独立的一条是"刀柄进料"（下面第 3 条）：料是有限厚的块，
-        # 刀尖切在里面、刀柄也扎进来，那是刀装得太短——与压板无关。
+        # 那条死规则删掉是对的，但它掩盖了一件真事：刀尖**在外面**、
+        # 刀柄的粗脖子扫到压板边缘，是完全不同的一种撞法，而它不违反
+        # "刀柄在刀尖之上"这个恒等式。要抓它必须把刀柄半径算进 x-y ——
+        # 见下面第 3 条。
         for c in fx.clamps:
             hit_tip = None
             for (x, y, z) in pts:
@@ -222,7 +232,40 @@ def check(segs, fixture, eps=1e-9):
                      % (seg.line, hit_tip[0], hit_tip[1], hit_tip[2], c.name))
                 break
 
-        # 3. 刀柄进料 —— 刃用完了
+        # 3. 刀柄侧面 —— 刀尖从压板旁边过去了，刀柄的脖子没有。
+        #
+        # 这是"刀柄在刀尖之上"这个恒等式**管不到**的那一种：刀尖在压板
+        # 外面两个身位，刀柄半径 15 的圆柱却扫过了压板边缘。判定要三样东西
+        # 同时成立，少一样就是误报：
+        #
+        #   刀尖在压板外        否则是 clamp_crash 的事，不是这条
+        #   刀柄底面够得着压板   holder_bottom(z) <= 压板顶面
+        #   轴线到压板矩形的距离 < 刀柄半径
+        #
+        # 第二样是关键：只按 x-y 判的话，一条正常的高速浅切（刀柄在压板上方
+        # 20 mm 处飞过）也会被拒，而那种程序车间里到处都是。
+        if 'holder_side' not in reasons:
+            hr = getattr(tool, 'holder_radius', 0.0)
+            if hr > 0:
+                for (x, y, z) in pts:
+                    hb = tool.holder_bottom(z)
+                    for c in fx.clamps:
+                        if hb > c.top() + eps:
+                            continue                 # 刀柄整个在压板上方
+                        if c.holds(x, y, z):
+                            continue                 # 刀尖自己在压板里，归 clamp_crash
+                        d = rect_distance(x, y, c)
+                        if d < hr - eps:
+                            note('holder_side', seg.line,
+                                 'line %d: 刀尖 (%.1f,%.1f,%.1f) 在压板 %s 外 %.1f mm，'
+                                 '但刀柄半径 %.1f 扫到了它（刀柄底面 Z=%.1f，'
+                                 '压板顶 %.1f）'
+                                 % (seg.line, x, y, z, c.name, d, hr, hb, c.top()))
+                            break
+                    if 'holder_side' in reasons:
+                        break
+
+        # 4. 刀柄进料 —— 刃用完了
         if 'holder_crash' not in reasons:
             for (x, y, z) in pts:
                 if st.footprint(x, y) and z < st.top_z - eps:
@@ -234,7 +277,7 @@ def check(segs, fixture, eps=1e-9):
                                 tool.stickout))
                         break
 
-        # 4. 快速穿过原料 —— 只判横移
+        # 5. 快速穿过原料 —— 只判横移
         if 'rapid_into_stock' not in reasons and (seg.s or 0) == 0:
             a, b = seg.start, seg.end
             lateral = math.hypot(b[0] - a[0], b[1] - a[1])
@@ -290,6 +333,14 @@ def planted_faults(fixture=None):
          'G21 G90\nM3 S8000\nG0 Z%.1f\nG0 X%.1f Y%.1f\nG1 Z%.1f F100\nG0 X%.1f Y%.1f\n'
          % (sz, st.x0 + 3, st.y0 + 3, st.top_z - 2.0, st.x1 - 3, st.y1 - 3),
          'rapid_into_stock'),
+        # 刀柄的粗脖子扫到压板侧面：刀尖从压板旁边 6 mm 过去，刀柄半径 15。
+        # 深度必须满足 holder_bottom <= 压板顶面（20-12=8），所以切深 8 mm；
+        # 而 8 < 料厚 28，刀柄底面还没进料，holder_crash 轮不到它。
+        # 这一条就是"刀柄在刀尖之上"这个恒等式管不到的那一种。
+        ('holder_side',
+         'G21 G90\nM3 S8000\nG0 Z%.1f\nG0 X%.1f Y%.1f\nG1 Z%.1f F100\nG1 X%.1f F400\n'
+         % (sz, c0.x1 + 6.0, cy, ctop - tool.stickout, c0.x1 + 9.0),
+         'holder_side'),
     ]
 
 
@@ -322,4 +373,12 @@ def legal_programs(fixture=None):
          'G1 Z-2.0 F150\nG1 X%.1f F500\nG1 Y%.1f\nG1 X%.1f\nG0 Z%.1f\nM5\n'
          % (sz, st.x0 + 5.0, st.y0 + 5.0, st.x1 - 5.0, st.y1 - 5.0,
             st.x0 + 5.0, sz)),
+        # 同一个位置、同一台刀，只把切深从 8 mm 改成 1 mm 就必须放行：
+        # 刀柄底面从 12 抬到 19，压板顶面是 12。这一条盯着"只看 x-y
+        # 不看 z"的写法 —— 那种写法会把车间里到处都是的浅切全拒掉。
+        ('near_clamp_shallow',
+         'G21 G90\nM3 S8000\nG0 Z%.1f\nG0 X%.1f Y%.1f\nG1 Z-1.0 F150\nG1 X%.1f F400\n'
+         'G0 Z%.1f\nM5\n'
+         % (sz, fx.clamps[0].x1 + 6.0, (fx.clamps[0].y0 + fx.clamps[0].y1) / 2.0,
+            fx.clamps[0].x1 + 9.0, sz)),
     ]

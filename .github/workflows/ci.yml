@@ -50,6 +50,15 @@ jobs:
           python -m craftagent hard --ap 2 --diameter 10 --stickout 40
           python -m craftagent supply
 
+      # 这三条也不是"再跑一遍测试"：把各自的核心断言印在 CI 日志里。
+      # 偏置对 Steiner 与网格、三维对梁理论、梁对四条解析解 —— 数字变了
+      # 会先被读到，而不是等到有人拿它去算件。
+      - name: Offset, 3D and beam kernels print their own error
+        run: |
+          python -m craftagent offset --grid 240
+          python -m craftagent fem3d
+          python -m craftagent beam
+
   # CAD 这一层单独一个 job，装 OpenCASCADE（70 MB，Linux / 52 MB，
   # Windows）。因为它装在 test job 里等于给四个矩阵格各加一刻钟，
   # 而它要验的不是"在四个平台上都能跑"，是"读进来的那块零件对不对"。

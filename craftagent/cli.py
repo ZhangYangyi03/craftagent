@@ -105,6 +105,19 @@ def main(argv=None):
                          help="二维平面应变内核：三道公认的门 + Kp 的 U 形在二维里还在不在")
     fem.add_argument("--nx", type=int, default=20)
 
+    off = sub.add_parser("offset",
+                         help="真正的等距曲线偏置：圆弧连接 + 凹角求交 + 自交裁剪")
+    off.add_argument("--dist", type=float, default=5.0)
+    off.add_argument("--grid", type=int, default=300, help="网格核对的格数")
+
+    f3 = sub.add_parser("fem3d",
+                        help="三维六面体内核：分片 / 零空间 / 悬臂梁 / 稀疏对稠密")
+    f3.add_argument("--nx", type=int, nargs="+", default=[8, 16, 24])
+
+    bm = sub.add_parser("beam",
+                        help="二维框架单元：四条解析解 + 细化不变 + 剪切变形占比")
+    bm.add_argument("--n", type=int, default=4)
+
     idf = sub.add_parser("identifiable",
                          help="哪些常数能被定住、哪些不能（判据 + 实测数字）")
 
@@ -264,6 +277,108 @@ def main(argv=None):
         print("  谷底仍在 1e8 量级，两边分别按 k/Kp 与 eps*Kp/k 上升。")
         print("  所以那条结论不是一维模型的假象。")
         print("  %s" % r2["caveat"])
+        return 0
+
+    if ns.cmd == "offset":
+        from . import offset as off
+        print("等距曲线偏置。三条参照都不是它自己：Steiner 公式、网格采样、|dist| 定义。")
+        print()
+        rect = [(0.0, 0.0), (60.0, 0.0), (60.0, 84.0), (0.0, 84.0)]
+        r = ns.dist
+        res = off.offset_polygon(rect, r)
+        steiner = off.area(rect) + off.perimeter(rect) * r + 3.141592653589793 * r * r
+        got = off.area(res["pts"])
+        print("一、矩形 %.0fx%.0f 向外偏 %.1f —— 对 Steiner 公式 A + P*r + pi*r^2"
+              % (60, 84, r))
+        print("  公式 %.3f   实测 %.3f   相对差 %.2e   圆弧 %d 段   每点距离误差 %.1e"
+              % (steiner, got, abs(got - steiner) / steiner, res["arcs"],
+                 res["max_dist_err"]))
+        mit = off.offset_polygon(rect, r, join="miter")
+        print("  斜接（逐点法向偏移那一支的做法） %.3f，顶点到轮廓的距离偏差 %.3f mm"
+              % (off.area(mit["pts"]), mit["max_dist_err"]))
+        print("  —— 斜接不是等距曲线，这个偏差就是它的量。")
+        inner = off.offset_polygon(rect, -r)
+        print("  向内偏 %.1f：面积 %.3f（解析值 %.3f）" %
+              (r, off.area(inner["pts"]), (60 - 2 * r) * (84 - 2 * r)))
+        print()
+        print("二、L 形与窄槽 —— 对网格采样（另一套完全不知道偏置为何物的算法）")
+        L = [(0.0, 0.0), (40.0, 0.0), (40.0, 20.0), (20.0, 20.0), (20.0, 40.0), (0.0, 40.0)]
+        slot = [(0.0, 0.0), (40.0, 0.0), (40.0, 20.0), (22.0, 20.0),
+                (22.0, 4.0), (18.0, 4.0), (18.0, 20.0), (0.0, 20.0)]
+        for name, poly, d in (("L 形外偏 4", L, 4.0), ("L 形内偏 3", L, -3.0),
+                              ("窄槽(宽4)外偏 3", slot, 3.0),
+                              ("窄槽(宽4)内偏 3", slot, -3.0)):
+            v = off.verify(poly, d, n=ns.grid)
+            print("  %-16s 面积 %8.2f / 网格 %8.2f  相对差 %5.1f%%  删环 %d  %s"
+                  % (name, v["area"], v["area_ref"], v["rel_err"] * 100,
+                     v["loops_removed"], "通过" if v["ok"] else "报失败：" + v["reason"]))
+        print("  最后一行是这套东西最该有的行为：槽宽 4、内偏 3，腐蚀之后左右")
+        print("  两块互不相连，**单条轮廓表示不了**。它报失败，而不是凑一条")
+        print("  闭合、无自交、每点距离都对、但少了一半的轮廓。")
+        print()
+        print("三、距离定义（每个顶点到原轮廓边界的距离必须等于 |dist|）")
+        for name, poly, d in (("矩形", rect, r), ("L 形", L, 4.0), ("窄槽", slot, 3.0)):
+            rr = off.offset_polygon(poly, d)
+            print("  %-6s 最大偏差 %.2e mm  无自交 %s"
+                  % (name, rr["max_dist_err"], "是" if rr["simple"] else "否"))
+        return 0
+
+    if ns.cmd == "fem3d":
+        from . import fem3d as f3m
+        print("三维六面体内核（hex8，2x2x2 高斯，纯 Python，无依赖）。")
+        print()
+        pt = f3m.patch_test(3, 3, 3)
+        print("门一 分片试验（常应变场必须被精确复现）")
+        print("  最大绝对误差 %.2e，相对 %.2e -> %s"
+              % (pt["max_err"], pt["rel_err"], "过" if pt["ok"] else "不过"))
+        nsh = f3m.rigid_body_nullity()
+        print("门二 单元零空间维数（必须恰为 6：三平移 + 三转动）")
+        print("  秩 %d，零空间 %d -> %s"
+              % (nsh["rank"], nsh["nullity"], "过" if nsh["nullity"] == 6 else "不过"))
+        sd = f3m.sparse_vs_dense(4, 2, 2)
+        print("门三 稀疏 PCG 与稠密高斯消元解同一个方程组")
+        print("  %d 自由度，PCG %d 步，两种解法相对差 %.1e -> %s"
+              % (sd["dof"], sd["pcg_iters"], sd["rel_diff"],
+                 "过" if sd["rel_diff"] < 1e-9 else "不过"))
+        print()
+        print("门四 悬臂梁端部挠度 vs 梁理论 PL^3/(3EI)（细化必须收敛过去）")
+        print("  %-8s %-6s %-6s %-8s %s" % ("网格", "单元", "自由度", "比值", "PCG"))
+        for nx in ns.nx:
+            c = f3m.cantilever(nx=nx)
+            print("  %-8s %-6d %-6d %-8.4f %d 步"
+                  % ("%dx4x4" % nx, c["elements"], c["dof"], c["ratio"], c["pcg_iters"]))
+        print("  比值从下面逼近 1 是 hex8 的锁定，不是 bug：三线性插值在纯弯下")
+        print("  混进了非零剪应变，单元偏刚。短梁（L/h=5）同一套代码是")
+        print("  0.779 / 0.934 / 0.971 —— 锁定程度随长径比变，不是一个常数。")
+        print()
+        print("边界：只生成长方体的结构化网格。解真实零件还差四面体网格生成，")
+        print("那一步这个仓没有，所以它不声称能解任意零件。")
+        return 0
+
+    if ns.cmd == "beam":
+        from . import beam as bm2
+        print("二维框架单元（轴向 + 欧拉-伯努利弯曲）。参照是四条解析解。")
+        print()
+        for n in (1, 2, ns.n):
+            c = bm2.cantilever(n=n)
+            print("  悬臂梁 %d 单元：端部 %.12f  理论 %.12f  差 %.1e"
+                  % (n, c["tip"], c["theory"], abs(c["tip"] - c["theory"])))
+        print("  分单元数不改变结果 —— 欧拉-伯努利在点载荷下的节点位移是精确的。")
+        a = bm2.axial(3)
+        print("  轴向拉伸：%.12f  理论 PL/EA %.12f" % (a["tip"], a["theory"]))
+        s = bm2.simply_supported(8)
+        print("  简支梁中点：%.12f  理论 PL^3/48EI %.12f" % (s["mid"], s["theory"]))
+        i = bm2.inclined()
+        print("  45 度斜杆：轴向 %.3e（理论 %.3e），横向 %.3e（理论 %.3e）"
+              % (i["along"], i["along_theory"], i["across"], i["across_theory"]))
+        rm = bm2.rigid_modes()
+        print("  单元零空间 %d（必须为 3：两平移 + 一转动）" % rm["nullity"])
+        print()
+        print("它没有的：剪切变形（Timoshenko）、大变形、三维梁。")
+        for L, h in ((100.0, 10.0), (20.0, 10.0)):
+            sh = bm2.shear_note(L=L, h=h)
+            print("  L/h=%.0f 时剪切挠度占弯曲挠度的 %.1f%%  —— %s"
+                  % (L / h, sh["ratio"] * 100, sh["note"]))
         return 0
 
     if ns.cmd == "identifiable":
