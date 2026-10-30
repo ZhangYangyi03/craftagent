@@ -19,6 +19,16 @@
 import json
 import sys
 
+# 这个脚本的 stdout 会被父进程当 JSON 读。Windows 上默认是 cp1252，
+# 打一句中文就 UnicodeEncodeError —— CI 的 windows cad job 就是这么挂的，
+# 失败信息看着像"OCC 布尔不对"，实际和 OCC 毫无关系。两道保险：
+# 这里把 stdout 转成 utf-8，且下面 json.dumps 一律 ensure_ascii（默认），
+# 输出保持纯 ASCII，父进程 json.loads 再把 \uXXXX 还原。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
+
 
 def main():
     try:
@@ -79,8 +89,7 @@ def main():
             rows[name] = {"ok": False, "why": repr(exc)[:200]}
             all_ok = False
     print(json.dumps({"ok": all_ok, "ops": rows,
-                      "note": "两个 10 立方体偏移 5；三个体积都有闭式"},
-                     ensure_ascii=False))
+                      "note": "两个 10 立方体偏移 5；三个体积都有闭式"}))
     return 0
 
 
