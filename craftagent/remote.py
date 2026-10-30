@@ -21,7 +21,8 @@ def target():
     return t
 
 def sh(argv, timeout=120):
-    r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
+                       encoding="utf-8", errors="replace")
     return r.returncode, r.stdout or "", r.stderr or ""
 
 def cmd_probe():

@@ -127,7 +127,8 @@ def read_part(path, tol=0.5, timeout=300):
     os.close(fd)
     try:
         r = subprocess.run([py, _WORKER, path, out, "--tol", str(tol)],
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
         if not os.path.exists(out) or os.path.getsize(out) == 0:
             return {"ok": False, "why": "worker_produced_nothing",
                     "returncode": r.returncode,
@@ -215,7 +216,7 @@ w = STEPControl_Writer(); w.Transfer(box, STEPControl_AsIs); w.Write(%r)
         fh.write(code)
     try:
         r = subprocess.run([py, script], capture_output=True, text=True,
-                           timeout=300)
+                           timeout=300, encoding="utf-8", errors="replace")
         if r.returncode != 0:
             return {"ok": False, "why": "sample_build_failed",
                     "stderr": (r.stderr or "")[-600:]}

@@ -48,6 +48,121 @@ def cpu_count():
         return os.cpu_count() or 1                   # Windows / macOS
 
 
+# 在子进程里跑的探测脚本。它只做一件事：试 import，把结果打成一行 JSON。
+# 单独一个字符串而不是文件，是因为它必须和探测逻辑永远同版本 ——
+# 一个散在 tools/ 下的脚本，改了一边忘一边的样子就是"明明有卡却说没有"。
+_PROBE_SRC = r'''
+import json
+import sys
+
+
+def report(**kw):
+    print(json.dumps(kw), flush=True)
+    sys.exit(0)
+
+
+for mod in ("cupy", "torch"):
+    # 先声明"我正在试谁"，而且必须 flush。理由：import 一个坏掉的包会
+    # 直接把进程 abort（这台机器上的 torch 就是这样），缓冲区里的东西
+    # 一起丢掉 —— 没有这一行，父进程只知道"探测死了"，不知道死在谁手上。
+    print(json.dumps({"trying": mod}), flush=True)
+    try:
+        m = __import__(mod)
+    except BaseException as exc:                      # noqa: BLE001
+        # BaseException 而不是 Exception：abort 不是 Exception，但真要
+        # 抛 SystemExit 之类的也得在这里收，不能让它越过探测边界。
+        print(json.dumps({"mod": mod, "error": type(exc).__name__}),
+              flush=True)
+        continue
+    if mod == "cupy":
+        try:
+            n = int(m.cuda.runtime.getDeviceCount())
+        except BaseException as exc:                  # noqa: BLE001
+            print(json.dumps({"mod": "cupy", "error": type(exc).__name__}),
+                  flush=True)
+            continue
+        if n > 0:
+            report(available=True, how="cupy", devices=n)
+    else:
+        try:
+            ok = bool(m.cuda.is_available())
+            n = int(m.cuda.device_count()) if ok else 0
+        except BaseException as exc:                  # noqa: BLE001
+            print(json.dumps({"mod": "torch", "error": type(exc).__name__}),
+                  flush=True)
+            continue
+        if ok and n > 0:
+            report(available=True, how="torch", devices=n)
+report(available=False)
+'''
+
+
+def _probe_worker(timeout=6):
+    """在**另一个进程**里试 cupy / torch，把"import 会弄死进程"这件事
+    关在那边。返回一行 tried 记录，available 为真时带 how / devices。
+
+    为什么非隔一层不可：这台机器装了 torch，而它的 OpenBLAS 一 import
+    就 "Memory allocation still failed after 10 retries"，进程 rc=1。
+    在父进程里 __import__ 的话死的是调用者本身 —— 实测
+    `from craftagent import gpu; gpu.cuda_probe()` 直接 rc=1、零输出，
+    tests/test_gpu.py 于是整条挂住，而失败信息里没有一个字提到 GPU。
+    """
+    try:
+        r = subprocess.run([sys.executable, "-c", _PROBE_SRC],
+                           capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
+    except subprocess.TimeoutExpired:
+        return {"what": "import cupy/torch", "error": "probe_timeout"}
+    except Exception as exc:                          # noqa: BLE001
+        return {"what": "import cupy/torch", "error": repr(exc)[:120]}
+
+    import json as _json
+
+    def _err(msg, **kw):
+        out = {"what": "import cupy/torch", "error": msg,
+               "returncode": r.returncode}
+        out.update(kw)
+        return out
+
+    lines = [ln for ln in (r.stdout or "").splitlines() if ln.strip()]
+    parsed = []
+    for ln in lines:
+        try:
+            parsed.append(_json.loads(ln))
+        except ValueError:
+            continue
+    # 探测脚本每试一个包先打一行 {"trying": ...}，所以"死在谁手上"是
+    # 读出来的，不是猜的：最后一条 trying 而其后没有结果的那一个就是它。
+    tried_mods, died_on = [], None
+    for rec in parsed:
+        if "trying" in rec:
+            tried_mods.append(rec["trying"])
+            died_on = rec["trying"]
+        elif "mod" in rec:
+            died_on = None
+        elif rec.get("available") is not None:
+            died_on = None
+    if died_on is not None:
+        return _err("import_crashed", crashed_on=died_on,
+                    tried_before=tried_mods,
+                    stderr=(r.stderr or "").strip().splitlines()[-1][:160]
+                           if (r.stderr or "").strip() else "")
+    if not parsed:
+        return _err("probe_died",
+                    stderr=(r.stderr or "").strip().splitlines()[-1][:160]
+                           if (r.stderr or "").strip() else "")
+    last = parsed[-1]
+    out = {"what": "import cupy/torch", "returncode": r.returncode,
+           "tried_mods": tried_mods}
+    skipped = [x for x in parsed if "mod" in x]
+    if skipped:
+        out["skipped"] = skipped
+    if last.get("available"):
+        out.update(available=last["how"], how=last["how"],
+                   devices=last["devices"])
+    return out
+
+
 def cuda_probe(timeout=6):
     """查 CUDA：设备列表 + 能不能真的建上下文。查不到就说查不到。"""
     tried = []
@@ -55,7 +170,8 @@ def cuda_probe(timeout=6):
     if smi:
         try:
             r = subprocess.run([smi, "-L"], capture_output=True, text=True,
-                               timeout=timeout)
+                               timeout=timeout, encoding="utf-8",
+                               errors="replace")
             tried.append({"what": "nvidia-smi -L", "rc": r.returncode,
                           "out": (r.stdout or "").strip()[:200]})
             if r.returncode == 0 and "GPU" in (r.stdout or ""):
@@ -67,33 +183,11 @@ def cuda_probe(timeout=6):
     else:
         tried.append({"what": "nvidia-smi", "error": "不在 PATH 里"})
 
-    for mod in ("cupy", "torch"):
-        try:
-            m = __import__(mod)
-        except Exception as e:                        # noqa: BLE001
-            tried.append({"what": "import %s" % mod, "error": type(e).__name__})
-            continue
-        if mod == "cupy":
-            try:
-                n = int(m.cuda.runtime.getDeviceCount())
-            except Exception as e:                    # noqa: BLE001
-                tried.append({"what": "cupy device count", "error": repr(e)[:80]})
-                continue
-            tried.append({"what": "cupy", "devices": n})
-            if n > 0:
-                return {"available": True, "how": "cupy", "devices": n,
-                        "tried": tried}
-        else:
-            try:
-                ok = bool(m.cuda.is_available())
-                n = int(m.cuda.device_count()) if ok else 0
-            except Exception as e:                    # noqa: BLE001
-                tried.append({"what": "torch.cuda", "error": repr(e)[:80]})
-                continue
-            tried.append({"what": "torch.cuda", "available": ok, "devices": n})
-            if ok and n > 0:
-                return {"available": True, "how": "torch", "devices": n,
-                        "tried": tried}
+    probe = _probe_worker(timeout)
+    tried.append(probe)
+    if probe.get("available"):
+        return {"available": True, "how": probe["how"],
+                "devices": probe["devices"], "tried": tried}
     return {"available": False,
             "why": "没有找到 CUDA 设备（nvidia-smi 无输出，cupy/torch 也没有可用设备）",
             "tried": tried,

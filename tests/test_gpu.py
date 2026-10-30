@@ -26,6 +26,20 @@ class TestStatus(unittest.TestCase):
         st = gpu.backend_status()
         self.assertIn(st["process"]["start_method"], ("spawn", "fork", "forkserver"))
 
+    def test_probe_cannot_kill_the_caller(self):
+        """探测必须是隔进程的：这台机器上的 torch 一 import 就把进程 abort
+        （OpenBLAS 分配失败），父进程里 __import__ 会让这条测试整个挂住，
+        而失败信息里没有一个字提到 GPU。这一条断言的是"探测活着回来了"，
+        并且如果某个包把子进程弄死了，结果里要指名道姓。"""
+        c = gpu.cuda_probe()
+        self.assertIn("available", c)
+        self.assertTrue(c.get("tried"))
+        for rec in c["tried"]:
+            if rec.get("error") == "import_crashed":
+                self.assertTrue(rec.get("crashed_on"),
+                                "说是探测崩了，却没说崩在哪个包上")
+                self.assertIn(rec["crashed_on"], ("cupy", "torch"))
+
     def test_cuda_absence_comes_with_a_reason(self):
         c = gpu.cuda_probe()
         if c["available"]:

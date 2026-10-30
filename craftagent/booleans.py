@@ -71,7 +71,9 @@ def boolean(op, path_a, path_b, out_step=None, tol=1e-6, timeout=600,
     out_step = out_step or os.path.join(tempfile.mkdtemp(), "bool.step")
     cmd = [st["python"], _WORKER, op, path_a, path_b, out_step, "--tol", str(tol)]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=timeout, encoding="utf-8",
+                           errors="replace")
     except Exception as exc:                                # pragma: no cover
         return {"ok": False, "why": "worker_exception", "detail": str(exc)}
     line = (r.stdout or "").strip().splitlines()
@@ -105,7 +107,8 @@ def selftest(candidates=None, timeout=600):
                         "本机没有，所以这里不声称任何数字"}
     try:
         r = subprocess.run([st["python"], _SELFTEST], capture_output=True,
-                           text=True, timeout=timeout)
+                           text=True, timeout=timeout, encoding="utf-8",
+                           errors="replace")
     except Exception as exc:                                # pragma: no cover
         return {"available": True, "verified_here": False,
                 "why": "worker_exception", "detail": str(exc)[:300],
