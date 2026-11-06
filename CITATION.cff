@@ -7,6 +7,6 @@ authors:
     given-names: Yangyi
     affiliation: Georgetown University
 repository-code: "https://github.com/ZhangYangyi03/craftagent"
-license: Apache-2.0
+license: MIT
 type: software
 keywords: [manufacturing, change point detection, attribution, standard library]
